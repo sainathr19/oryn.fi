@@ -1,0 +1,406 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "forge-std/Test.sol";
+import "../src/OrynEngine.sol";
+import "../src/OrynUSD.sol";
+import "../src/mocks/MockPyth.sol";
+import "../src/mocks/MockERC20.sol";
+import "../src/interfaces/IPyth.sol";
+import "../src/interfaces/PythStructs.sol";
+
+/**
+ * @title OrynEngineTest
+ * @notice Comprehensive test suite for OrynEngine with Pyth Network integration
+ */
+contract OrynEngineTest is Test {
+    OrynEngine public orynEngine;
+    OrynUSD public orynUSD;
+    MockPyth public mockPyth;
+    MockERC20 public weth;
+    MockERC20 public wbtc;
+    
+    // Test addresses
+    address public constant USER = address(0x1);
+    address public constant LIQUIDATOR = address(0x2);
+    address public constant OWNER = address(0x3);
+    
+    // Starting balances
+    uint256 public constant STARTING_BALANCE = 100 ether;
+    uint256 public constant COLLATERAL_AMOUNT = 10 ether;
+    uint256 public constant MINT_AMOUNT = 1000 ether; // $1000 worth of OrynUSD
+    
+    // Custom price feed IDs for testing (32 bytes each)
+    bytes32 public constant ETH_USD_PRICE_ID = keccak256("ETH_USD_TEST");
+    bytes32 public constant BTC_USD_PRICE_ID = keccak256("BTC_USD_TEST");
+    
+    // Mock prices with Pyth format: price * 10^expo
+    // ETH: $2000.00 = 200000000000 * 10^(-8)
+    int64 public constant ETH_PRICE = 200000000000;  // $2000 with 8 decimals
+    // BTC: $40000.00 = 4000000000000 * 10^(-8)  
+    int64 public constant BTC_PRICE = 4000000000000; // $40000 with 8 decimals
+    int32 public constant PRICE_EXPO = -8;           // Pyth typically uses -8 exponent
+    
+    event CollateralDeposited(address indexed user, address indexed token, uint256 indexed amount);
+
+    function setUp() public {
+        // Start prank as owner for deployment
+        vm.startPrank(OWNER);
+        
+        // Deploy mock contracts
+        mockPyth = new MockPyth();
+        weth = new MockERC20("Wrapped Ethereum", "WETH", 18);
+        wbtc = new MockERC20("Wrapped Bitcoin", "WBTC", 8);
+        
+        // Set up mock prices in Pyth
+        mockPyth.setPrice(ETH_USD_PRICE_ID, ETH_PRICE, 1000000, PRICE_EXPO, block.timestamp);
+        mockPyth.setPrice(BTC_USD_PRICE_ID, BTC_PRICE, 2000000, PRICE_EXPO, block.timestamp);
+        
+        // Deploy OrynEngine with mock tokens and price feeds
+        address[] memory tokenAddresses = new address[](2);
+        bytes32[] memory priceFeedIds = new bytes32[](2);
+        
+        tokenAddresses[0] = address(weth);
+        tokenAddresses[1] = address(wbtc);
+        priceFeedIds[0] = ETH_USD_PRICE_ID;
+        priceFeedIds[1] = BTC_USD_PRICE_ID;
+        
+        orynEngine = new OrynEngine(tokenAddresses, priceFeedIds, address(mockPyth));
+        orynUSD = orynEngine.getOrynUSDContractAddress();
+        
+        vm.stopPrank();
+        
+        // Mint tokens to users
+        weth.mint(USER, STARTING_BALANCE);
+        wbtc.mint(USER, STARTING_BALANCE);
+        weth.mint(LIQUIDATOR, STARTING_BALANCE);
+        wbtc.mint(LIQUIDATOR, STARTING_BALANCE);
+        
+        // Set up approvals
+        vm.startPrank(USER);
+        weth.approve(address(orynEngine), type(uint256).max);
+        wbtc.approve(address(orynEngine), type(uint256).max);
+        vm.stopPrank();
+        
+        vm.startPrank(LIQUIDATOR);
+        weth.approve(address(orynEngine), type(uint256).max);
+        wbtc.approve(address(orynEngine), type(uint256).max);
+        vm.stopPrank();
+    }
+    
+    function testSetup() public {
+        // Test that contracts are deployed correctly
+        assertTrue(address(orynEngine) != address(0));
+        assertTrue(address(orynUSD) != address(0));
+        assertTrue(address(mockPyth) != address(0));
+        assertTrue(address(weth) != address(0));
+        assertTrue(address(wbtc) != address(0));
+        
+        // Test that users have starting balances
+        assertEq(weth.balanceOf(USER), STARTING_BALANCE);
+        assertEq(wbtc.balanceOf(USER), STARTING_BALANCE);
+    }
+    
+    function testPythPriceIntegration() public {
+        // Test that we can get latest price from Pyth
+        PythStructs.Price memory price = orynEngine.getLatestPythPrice(address(weth));
+        
+        assertEq(price.price, ETH_PRICE);
+        assertEq(price.expo, PRICE_EXPO);
+        assertGt(price.publishTime, 0);
+        console.log("ETH Price from Pyth:", uint256(uint64(price.price)));
+        console.log("ETH Expo from Pyth:", uint256(uint32(price.expo)));
+    }
+    
+    function testGetUSDValue() public {
+        uint256 ethAmount = 1 ether; // 1 ETH
+        uint256 usdValue = orynEngine.getUSDValue(address(weth), ethAmount);
+        
+        console.log("1 ETH USD Value:", usdValue);
+        // 1 ETH should be worth $2000 (2000 * 1e18)
+        assertApproxEqRel(usdValue, 2000 ether, 1e15); // 0.1% tolerance
+    }
+    
+    function testGetTokenAmountInUSD() public {
+        uint256 usdAmount = 2000 ether; // $2000
+        uint256 tokenAmount = orynEngine.getTokenAmountinUSD(address(weth), usdAmount);
+        
+        console.log("$2000 worth of ETH tokens:", tokenAmount);
+        // $2000 USD should equal 1 ETH (1 * 1e18)
+        assertApproxEqRel(tokenAmount, 1 ether, 1e15); // 0.1% tolerance
+    }
+    
+    function testDepositCollateral() public {
+        vm.startPrank(USER);
+        
+        uint256 balanceBefore = weth.balanceOf(USER);
+        
+        vm.expectEmit(true, true, true, true);
+        emit CollateralDeposited(USER, address(weth), COLLATERAL_AMOUNT);
+        
+        orynEngine.depositCollateral(address(weth), COLLATERAL_AMOUNT);
+        
+        uint256 deposited = orynEngine.getCollateralDepositedAmount(USER, address(weth));
+        uint256 balanceAfter = weth.balanceOf(USER);
+        
+        assertEq(deposited, COLLATERAL_AMOUNT);
+        assertEq(balanceBefore - balanceAfter, COLLATERAL_AMOUNT);
+        
+        vm.stopPrank();
+    }
+    
+    function testMintOrynUSD() public {
+        vm.startPrank(USER);
+        
+        // First deposit collateral
+        orynEngine.depositCollateral(address(weth), COLLATERAL_AMOUNT);
+        
+        // Then mint OrynUSD
+        orynEngine.mintOrynUSD(MINT_AMOUNT);
+        
+        uint256 minted = orynEngine.getOrynUSDMint(USER);
+        uint256 balance = orynUSD.balanceOf(USER);
+        
+        assertEq(minted, MINT_AMOUNT);
+        assertEq(balance, MINT_AMOUNT);
+        
+        console.log("OrynUSD minted:", minted);
+        console.log("OrynUSD balance:", balance);
+        
+        vm.stopPrank();
+    }
+    
+    function testDepositCollateralAndMint() public {
+        vm.startPrank(USER);
+        
+        orynEngine.depositCollateralAndMintOrynUSD(address(weth), COLLATERAL_AMOUNT, MINT_AMOUNT);
+        
+        uint256 deposited = orynEngine.getCollateralDepositedAmount(USER, address(weth));
+        uint256 minted = orynEngine.getOrynUSDMint(USER);
+        uint256 balance = orynUSD.balanceOf(USER);
+        
+        assertEq(deposited, COLLATERAL_AMOUNT);
+        assertEq(minted, MINT_AMOUNT);
+        assertEq(balance, MINT_AMOUNT);
+        
+        vm.stopPrank();
+    }
+    
+    function testHealthFactor() public {
+        vm.startPrank(USER);
+        
+        orynEngine.depositCollateralAndMintOrynUSD(address(weth), COLLATERAL_AMOUNT, MINT_AMOUNT);
+        
+        uint256 healthFactor = orynEngine.getHealthFactor(USER);
+        
+        console.log("Health Factor:", healthFactor);
+        console.log("Min Health Factor:", orynEngine.getMinHealthFactor());
+        
+        // With 10 ETH ($20,000) collateral and $1000 minted
+        // Health factor should be: (20000 * 50 / 100) / 1000 = 10
+        assertGt(healthFactor, orynEngine.getMinHealthFactor());
+        
+        vm.stopPrank();
+    }
+    
+    function testRedeemCollateral() public {
+        vm.startPrank(USER);
+        
+        // Deposit collateral and mint some OrynUSD (less than max to keep healthy)
+        orynEngine.depositCollateralAndMintOrynUSD(address(weth), COLLATERAL_AMOUNT, MINT_AMOUNT / 2);
+        
+        uint256 redeemAmount = 1 ether;
+        uint256 balanceBefore = weth.balanceOf(USER);
+        
+        orynEngine.redeemCollateral(address(weth), redeemAmount);
+        
+        uint256 remainingCollateral = orynEngine.getCollateralDepositedAmount(USER, address(weth));
+        uint256 balanceAfter = weth.balanceOf(USER);
+        
+        assertEq(remainingCollateral, COLLATERAL_AMOUNT - redeemAmount);
+        assertEq(balanceAfter - balanceBefore, redeemAmount);
+        
+        vm.stopPrank();
+    }
+    
+    function testBurnOrynUSD() public {
+        vm.startPrank(USER);
+        
+        // Deposit collateral and mint OrynUSD
+        orynEngine.depositCollateralAndMintOrynUSD(address(weth), COLLATERAL_AMOUNT, MINT_AMOUNT);
+        
+        uint256 burnAmount = 500 ether;
+        
+        // Approve OrynEngine to burn tokens
+        orynUSD.approve(address(orynEngine), burnAmount);
+        
+        orynEngine.burnOrynUSD(burnAmount);
+        
+        uint256 remainingMinted = orynEngine.getOrynUSDMint(USER);
+        uint256 balance = orynUSD.balanceOf(USER);
+        
+        assertEq(remainingMinted, MINT_AMOUNT - burnAmount);
+        assertEq(balance, MINT_AMOUNT - burnAmount);
+        
+        vm.stopPrank();
+    }
+    
+    function testLiquidationSetup() public {
+        vm.startPrank(USER);
+        
+        // User deposits collateral and mints OrynUSD
+        orynEngine.depositCollateralAndMintOrynUSD(address(weth), COLLATERAL_AMOUNT, MINT_AMOUNT);
+        
+        // Check user's initial state
+        uint256 initialHealthFactor = orynEngine.getHealthFactor(USER);
+        uint256 userDebt = orynEngine.getOrynUSDMint(USER);
+        uint256 userCollateral = orynEngine.getCollateralDepositedAmount(USER, address(weth));
+        
+        console.log("Initial Health Factor:", initialHealthFactor);
+        console.log("User Debt:", userDebt);
+        console.log("User Collateral:", userCollateral);
+        
+        assertGt(initialHealthFactor, orynEngine.getMinHealthFactor());
+        assertEq(userDebt, MINT_AMOUNT);
+        assertEq(userCollateral, COLLATERAL_AMOUNT);
+        
+        vm.stopPrank();
+        
+        // Simulate price drop - ETH drops to $100 (10000000000 * 10^(-8))
+        mockPyth.setPrice(ETH_USD_PRICE_ID, 10000000000, 1000000, PRICE_EXPO, block.timestamp);
+        
+        // Now user should be liquidatable
+        uint256 healthFactorAfterDrop = orynEngine.getHealthFactor(USER);
+        console.log("Health Factor after price drop:", healthFactorAfterDrop);
+        
+        // Verify user is now liquidatable
+        assertLt(healthFactorAfterDrop, orynEngine.getMinHealthFactor());
+        
+        // Test that price changes are reflected correctly
+        uint256 newUSDValue = orynEngine.getUSDValue(address(weth), 1 ether);
+        console.log("New ETH USD Value after price drop:", newUSDValue);
+        
+        // Should be approximately $100 now
+        assertApproxEqRel(newUSDValue, 100 ether, 1e15); // 0.1% tolerance
+    }
+
+    function testLiquidationExecution() public {
+        // Use separate addresses to avoid health factor conflicts
+        address poorUser = makeAddr("poorUser");
+        address richLiquidator = makeAddr("richLiquidator");
+        
+        // Give poor user some ETH to start
+        weth.mint(poorUser, COLLATERAL_AMOUNT);
+        
+        vm.startPrank(poorUser);
+        weth.approve(address(orynEngine), COLLATERAL_AMOUNT);
+        
+        // Poor user deposits collateral and mints maximum OrynUSD
+        orynEngine.depositCollateralAndMintOrynUSD(address(weth), COLLATERAL_AMOUNT, MINT_AMOUNT);
+        vm.stopPrank();
+        
+        // Simulate catastrophic ETH price drop to $50
+        mockPyth.setPrice(ETH_USD_PRICE_ID, 5000000000, 1000000, PRICE_EXPO, block.timestamp);
+        
+        // Verify user is liquidatable
+        uint256 healthFactor = orynEngine.getHealthFactor(poorUser);
+        console.log("Poor user health factor:", healthFactor);
+        assertLt(healthFactor, orynEngine.getMinHealthFactor());
+        
+        // Rich liquidator gets OrynUSD from somewhere (mint directly as admin)
+        vm.prank(address(orynEngine));
+        orynUSD.mint(richLiquidator, 1000 ether);
+        
+        vm.startPrank(richLiquidator);
+        orynUSD.approve(address(orynEngine), type(uint256).max);
+        
+        uint256 debtToCover = 100 ether;
+        uint256 liquidatorCollateralBefore = weth.balanceOf(richLiquidator);
+        uint256 userDebtBefore = orynEngine.getOrynUSDMint(poorUser);
+        
+        console.log("User debt before liquidation:", userDebtBefore);
+        console.log("Liquidator collateral before:", liquidatorCollateralBefore);
+        
+        // Execute liquidation
+        orynEngine.liquidate(address(weth), poorUser, debtToCover);
+        
+        uint256 liquidatorCollateralAfter = weth.balanceOf(richLiquidator);
+        uint256 userDebtAfter = orynEngine.getOrynUSDMint(poorUser);
+        
+        console.log("User debt after liquidation:", userDebtAfter);
+        console.log("Liquidator collateral after:", liquidatorCollateralAfter);
+        
+        // Verify liquidation worked
+        assertEq(userDebtAfter, userDebtBefore - debtToCover);
+        assertGt(liquidatorCollateralAfter, liquidatorCollateralBefore);
+        
+        vm.stopPrank();
+    }
+    
+    function testRevertsOnStalePrice() public {
+        // Advance time first to ensure we don't underflow
+        vm.warp(500);
+        
+        // Set a very old timestamp to simulate stale price
+        mockPyth.setPrice(ETH_USD_PRICE_ID, ETH_PRICE, 1000000, PRICE_EXPO, block.timestamp - 400);
+        
+        vm.expectRevert(OrynEngine.OrynEngine__StalePrice.selector);
+        orynEngine.getLatestPythPrice(address(weth));
+    }
+    
+    function testRevertsOnZeroPrice() public {
+        // Set price to zero
+        mockPyth.setPrice(ETH_USD_PRICE_ID, 0, 1000000, PRICE_EXPO, block.timestamp);
+        
+        vm.expectRevert(OrynEngine.OrynEngine__StalePrice.selector);
+        orynEngine.getUSDValue(address(weth), 1 ether);
+    }
+    
+    function testRevertsOnNegativePrice() public {
+        // Set negative price
+        mockPyth.setPrice(ETH_USD_PRICE_ID, -100000000000, 1000000, PRICE_EXPO, block.timestamp);
+        
+        vm.expectRevert(OrynEngine.OrynEngine__StalePrice.selector);
+        orynEngine.getUSDValue(address(weth), 1 ether);
+    }
+    
+    function testGetPriceFeedId() public {
+        bytes32 feedId = orynEngine.getPriceFeedId(address(weth));
+        assertEq(feedId, ETH_USD_PRICE_ID);
+    }
+    
+    function testGetPythContract() public {
+        address pythAddress = address(orynEngine.getPythContract());
+        assertEq(pythAddress, address(mockPyth));
+    }
+    
+    function testPythPriceAgeThreshold() public {
+        uint256 threshold = orynEngine.getPythPriceAgeThreshold();
+        assertEq(threshold, 60); // 1 minute as set in the contract
+    }
+    
+    function testMultipleCollateralTypes() public {
+        vm.startPrank(USER);
+        
+        // Deposit both ETH and BTC as collateral
+        orynEngine.depositCollateral(address(weth), 5 ether);
+        orynEngine.depositCollateral(address(wbtc), 1e8); // 1 BTC (8 decimals)
+        
+        // Check both deposits
+        uint256 ethDeposited = orynEngine.getCollateralDepositedAmount(USER, address(weth));
+        uint256 btcDeposited = orynEngine.getCollateralDepositedAmount(USER, address(wbtc));
+        
+        assertEq(ethDeposited, 5 ether);
+        assertEq(btcDeposited, 1e8);
+        
+        // Mint OrynUSD against combined collateral
+        orynEngine.mintOrynUSD(MINT_AMOUNT);
+        
+        uint256 healthFactor = orynEngine.getHealthFactor(USER);
+        console.log("Health Factor with multiple collaterals:", healthFactor);
+        
+        assertGt(healthFactor, orynEngine.getMinHealthFactor());
+        
+        vm.stopPrank();
+    }
+}

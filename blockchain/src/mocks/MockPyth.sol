@@ -19,7 +19,7 @@ contract MockPyth is IPyth {
     mapping(bytes32 => PythStructs.Price) private emaPrices;
     
     // Valid time period for price feeds (default 60 seconds)
-    uint256 private validTimePeriod = 60;
+    uint256 private validTimePeriod = 300; // 5 minutes
     
     /**
      * @notice Set mock price data for a given price feed ID

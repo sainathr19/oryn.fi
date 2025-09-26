@@ -69,7 +69,7 @@ contract OrynEngine is ReentrancyGuard {
     uint256 private constant LIQUIDATION_PRECISION = 100;
     uint256 private constant MIN_HEALTH_FACTOR = 1e18;
     uint256 private constant LIQUIDATION_BONUS = 10; // 10% Bonus 
-    uint256 private constant PYTH_PRICE_AGE_THRESHOLD = 300; // 5 minutes in seconds
+    uint256 private constant PYTH_PRICE_AGE_THRESHOLD = 60; // 1 minute in seconds
 
     IPyth private immutable i_pyth;
     mapping(address token => bytes32 priceFeedId) private s_priceFeeds;
@@ -211,17 +211,9 @@ contract OrynEngine is ReentrancyGuard {
      */
     function burnOrynUSD(uint256 amount) public moreThanZero(amount) {
         _burnOrynUSD(amount, msg.sender, msg.sender);
-        
-        // Not sure if the below statement is needed 
         // _RevertIfHealthFactorIsBroken(msg.sender); 
-        // The above statement has been removed since it doenst allow the user to partially burn tokens
     }
 
-    // if we do start nearing undercollateralization, we need someone to liquidate positions
-    // If someone is almost undercollateralized we will pay u to liquidate them
-    // eg if someone intial deposited $100 to get $50OrynUSD
-    // the deposit value falls to $75 we will ask them to liquidate it since it reached the threshold
-    // the Liquidator takes of $75 and burns $50 OrynUSD 
     /** 
      * @param collateral The ERC20 address of the collateral they want to pay off 
      * @param user The address of the user whose debt they want to pay, The health factor should
@@ -230,9 +222,6 @@ contract OrynEngine is ReentrancyGuard {
      * @notice you can partially cover the users debt and will get a liquidation bonus 
      * @notice The function working assumes the protocol will be roughly 200% overcollateralised 
      *         in order fro this to work 
-     * @notice A known bug would be if the protocol was only 100% collateralized, we wouldn't be able to liquidate anyone.
-     * For example, if the price of the collateral plummeted before anyone could be liquidated
-     * 
      * Follows CEI 
      */
     function liquidate(address collateral, address user, uint256 debtToCover) 
@@ -249,7 +238,7 @@ contract OrynEngine is ReentrancyGuard {
         
         uint256 tokenAmountFromDebtcovered = getTokenAmountinUSD(collateral, debtToCover);
 
-        uint256 bonusCollateral = (tokenAmountFromDebtcovered/ LIQUIDATION_BONUS)/LIQUIDATION_PRECISION ;
+        uint256 bonusCollateral = (tokenAmountFromDebtcovered * LIQUIDATION_BONUS) / LIQUIDATION_PRECISION;
         
         uint256 totalCollateralToRedeem = tokenAmountFromDebtcovered + bonusCollateral;
 
@@ -327,10 +316,12 @@ contract OrynEngine is ReentrancyGuard {
         // total collateral value
         (uint256 totalOrynUSDMinted, uint256 collateralValueinUSD) = _getAccountInformation(user);
         if (totalOrynUSDMinted == 0 ) {
-            return 2 * PRECISION;
+            return type(uint256).max;
         }
-        uint256 collateralAdjustedThreshold = (collateralValueinUSD/totalOrynUSDMinted)/LIQUIDATION_PRECISION;
-        return ((collateralAdjustedThreshold * PRECISION) / totalOrynUSDMinted);
+        // Apply liquidation threshold: collateralValue * threshold / 100
+        uint256 collateralAdjustedForThreshold = (collateralValueinUSD * LIQUIDATION_TRESHOLD) / LIQUIDATION_PRECISION;
+        // Health factor = (collateral * threshold) / debt
+        return (collateralAdjustedForThreshold * PRECISION) / totalOrynUSDMinted;
     }
 
     /**
@@ -368,14 +359,26 @@ contract OrynEngine is ReentrancyGuard {
             revert OrynEngine__StalePrice();
         }
         
-        // Convert Pyth price to positive uint256 and adjust for decimals
+        // Validate price is positive
+        if (pythPrice.price <= 0) {
+            revert OrynEngine__StalePrice();
+        }
+        
+        // Convert Pyth price to 18 decimals: price * 10^expo -> 18 decimals
         uint256 price = uint256(uint64(pythPrice.price));
         uint256 priceAdjusted;
         
         if (pythPrice.expo >= 0) {
-            priceAdjusted = price * (10 ** uint256(int256(pythPrice.expo)));
+            // If expo is positive, multiply: price * 10^expo * 10^18
+            priceAdjusted = price * (10 ** (uint256(int256(pythPrice.expo)) + 18));
         } else {
-            priceAdjusted = price * (10 ** (18 + uint256(-int256(pythPrice.expo))));
+            // If expo is negative: price * 10^(-|expo|) * 10^18 = price * 10^(18-|expo|)
+            uint256 negativeExpo = uint256(-int256(pythPrice.expo));
+            if (negativeExpo <= 18) {
+                priceAdjusted = price * (10 ** (18 - negativeExpo));
+            } else {
+                priceAdjusted = price / (10 ** (negativeExpo - 18));
+            }
         }
         
         return (USDAmountInWei * PRECISION) / priceAdjusted;
@@ -416,14 +419,26 @@ contract OrynEngine is ReentrancyGuard {
             revert OrynEngine__StalePrice();
         }
         
-        // Convert Pyth price to positive uint256 and adjust for decimals
+        // Validate price is positive
+        if (pythPrice.price <= 0) {
+            revert OrynEngine__StalePrice();
+        }
+        
+        // Convert Pyth price to 18 decimals: price * 10^expo -> 18 decimals
         uint256 price = uint256(uint64(pythPrice.price));
         uint256 priceAdjusted;
         
         if (pythPrice.expo >= 0) {
-            priceAdjusted = price * (10 ** uint256(int256(pythPrice.expo)));
+            // If expo is positive, multiply: price * 10^expo * 10^18
+            priceAdjusted = price * (10 ** (uint256(int256(pythPrice.expo)) + 18));
         } else {
-            priceAdjusted = price * (10 ** (18 + uint256(-int256(pythPrice.expo))));
+            // If expo is negative: price * 10^(-|expo|) * 10^18 = price * 10^(18-|expo|)
+            uint256 negativeExpo = uint256(-int256(pythPrice.expo));
+            if (negativeExpo <= 18) {
+                priceAdjusted = price * (10 ** (18 - negativeExpo));
+            } else {
+                priceAdjusted = price / (10 ** (negativeExpo - 18));
+            }
         }
         
         return (priceAdjusted * amount) / PRECISION;
