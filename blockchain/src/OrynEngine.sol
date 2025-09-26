@@ -5,8 +5,14 @@ pragma solidity ^0.8.0;
 import "./OrynUSD.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import "./interfaces/IPyth.sol";
 import "./interfaces/PythStructs.sol";
+import "./interfaces/IUniPositionManager.sol";
+import "./interfaces/IUniswapV3PoolMinimal.sol";
+import "./interfaces/IUniswapV3FactoryMinimal.sol";
+import "@uniswap/v3-core/contracts/libraries/TickMath.sol";
+import "@uniswap/v3-periphery/contracts/libraries/LiquidityAmounts.sol";
 
 /**
  * @title OrynUSDEngine
@@ -25,7 +31,7 @@ import "./interfaces/PythStructs.sol";
  * for minting and redeeming OrynUSD, as well as depositing and withdrawing collateral.
  * @notice This contract is based on the MakerDAO DSS system
  */
-contract OrynEngine is ReentrancyGuard {
+contract OrynEngine is ReentrancyGuard, IERC721Receiver {
 
     ///////////////////
     //   Errors  //////
@@ -42,6 +48,21 @@ contract OrynEngine is ReentrancyGuard {
     error OrynEngine__InValidIndex();
     error OrynEngine__PriceFeedNotFound();
     error OrynEngine__StalePrice();
+    error OrynEngine__PositionAlreadyDeposited();
+    error OrynEngine__PositionNotOwner();
+    error OrynEngine__UnsupportedPositionTokens();
+    error OrynEngine__UninitializedPool();
+
+    struct UniPositionInfo {
+        address token0;
+        address token1;
+        uint24 fee;
+        int24 tickLower;
+        int24 tickUpper;
+        uint128 liquidity;
+        uint128 tokensOwed0;
+        uint128 tokensOwed1;
+    }
 
     ///////////////////
     // Modifiers  /////
@@ -72,10 +93,14 @@ contract OrynEngine is ReentrancyGuard {
     uint256 private constant PYTH_PRICE_AGE_THRESHOLD = 60; // 1 minute in seconds
 
     IPyth private immutable i_pyth;
+    IUniPositionManager private immutable i_positionManager;
     mapping(address token => bytes32 priceFeedId) private s_priceFeeds;
     mapping(address user => mapping(address token => uint256 amount)) private s_CollateralDeposited;
     mapping(address user => uint256 amountOrynUSDMinted) private s_OrynUSDMinted;
     address[] private s_CollateralTokens;
+    mapping(uint256 tokenId => address owner) private s_positionOwner;
+    mapping(address user => uint256[] tokenIds) private s_userPositions;
+    mapping(uint256 tokenId => uint256 index) private s_positionIndex;
 
     OrynUSD private immutable i_OrynUSD;
 
@@ -85,6 +110,8 @@ contract OrynEngine is ReentrancyGuard {
 
     event CollateralDeposited(address indexed user, address indexed token, uint256 indexed amount);
     event CollateralRedeemed(address indexed RedeemedFrom, address indexed RedeemedTo, address indexed token, uint256 amount);
+    event UniPositionDeposited(address indexed user, uint256 indexed tokenId, address indexed token0, address token1, uint256 usdValue);
+    event UniPositionRedeemed(address indexed user, uint256 indexed tokenId, uint256 usdValue);
 
     ///////////////////
     // Functions  /////
@@ -93,7 +120,8 @@ contract OrynEngine is ReentrancyGuard {
     constructor (
         address[] memory tokenAddresses,
         bytes32[] memory priceFeedIds,
-        address pythAddress
+        address pythAddress,
+        address positionManager
     ) {
         if (tokenAddresses.length != priceFeedIds.length) {
             revert OrynEngine__TokenAddresslengthandPriceFeedAddresslengthMustBeEqual(); 
@@ -113,12 +141,13 @@ contract OrynEngine is ReentrancyGuard {
             }
         }
 
-        if (pythAddress == address(0)) {
+          if (pythAddress == address(0) || positionManager == address(0)) {
            revert OrynEngine__TokenAddressZero();
         }
 
         i_OrynUSD = new OrynUSD();
         i_pyth = IPyth(pythAddress);
+          i_positionManager = IUniPositionManager(positionManager);
     }
 
     ////////////////////////////
@@ -134,6 +163,11 @@ contract OrynEngine is ReentrancyGuard {
     function depositCollateralAndMintOrynUSD(address tokenCollateralAddress, uint256 amountCollateral,uint256 amountOrynUSDtoMint) 
     external {
         depositCollateral(tokenCollateralAddress, amountCollateral);
+        mintOrynUSD(amountOrynUSDtoMint);
+    }
+
+    function depositUniPositionAndMint(uint256 tokenId, uint256 amountOrynUSDtoMint) external {
+        depositUniPosition(tokenId);
         mintOrynUSD(amountOrynUSDtoMint);
     }
 
@@ -157,6 +191,34 @@ contract OrynEngine is ReentrancyGuard {
         if (!success) {
             revert OrynEngine__TransferFailed();
         }
+    }
+
+    function depositUniPosition(uint256 tokenId) public nonReentrant {
+        if (tokenId == 0) {
+            revert OrynEngine__InValidIndex();
+        }
+
+        if (s_positionOwner[tokenId] != address(0)) {
+            revert OrynEngine__PositionAlreadyDeposited();
+        }
+
+        address owner = i_positionManager.ownerOf(tokenId);
+        if (owner != msg.sender) {
+            revert OrynEngine__PositionNotOwner();
+        }
+
+        (UniPositionInfo memory positionInfo) = _getUniPositionInfo(tokenId);
+        _validatePositionTokens(positionInfo.token0, positionInfo.token1);
+
+        i_positionManager.safeTransferFrom(msg.sender, address(this), tokenId);
+
+        s_positionOwner[tokenId] = msg.sender;
+        s_positionIndex[tokenId] = s_userPositions[msg.sender].length;
+        s_userPositions[msg.sender].push(tokenId);
+
+    uint256 usdValue = _getUniPositionValueUSD(positionInfo);
+
+        emit UniPositionDeposited(msg.sender, tokenId, positionInfo.token0, positionInfo.token1, usdValue);
     }
 
 
@@ -187,6 +249,26 @@ contract OrynEngine is ReentrancyGuard {
         _redeemCollateral(tokenCollateralAddress, amountCollateral, msg.sender, msg.sender);
 
         _RevertIfHealthFactorIsBroken(msg.sender);
+    }
+
+    function redeemUniPosition(uint256 tokenId) external nonReentrant {
+        address owner = s_positionOwner[tokenId];
+        if (owner != msg.sender) {
+            revert OrynEngine__PositionNotOwner();
+        }
+
+    UniPositionInfo memory positionInfo = _getUniPositionInfo(tokenId);
+    uint256 positionValue = _getUniPositionValueUSD(positionInfo);
+
+        _removeUserPosition(msg.sender, tokenId);
+
+        i_positionManager.safeTransferFrom(address(this), msg.sender, tokenId);
+        delete s_positionOwner[tokenId];
+        delete s_positionIndex[tokenId];
+
+        _RevertIfHealthFactorIsBroken(msg.sender);
+
+        emit UniPositionRedeemed(msg.sender, tokenId, positionValue);
     }
 
     /**
@@ -312,16 +394,8 @@ contract OrynEngine is ReentrancyGuard {
      * @param user the address whose health factor we want to calculate
      */
     function _HealthFactor(address user) private view returns (uint256) {
-        // total OrynUSD minted 
-        // total collateral value
         (uint256 totalOrynUSDMinted, uint256 collateralValueinUSD) = _getAccountInformation(user);
-        if (totalOrynUSDMinted == 0 ) {
-            return type(uint256).max;
-        }
-        // Apply liquidation threshold: collateralValue * threshold / 100
-        uint256 collateralAdjustedForThreshold = (collateralValueinUSD * LIQUIDATION_TRESHOLD) / LIQUIDATION_PRECISION;
-        // Health factor = (collateral * threshold) / debt
-        return (collateralAdjustedForThreshold * PRECISION) / totalOrynUSDMinted;
+        return _calculateHealthFactor(collateralValueinUSD, totalOrynUSDMinted);
     }
 
     /**
@@ -399,6 +473,17 @@ contract OrynEngine is ReentrancyGuard {
             unchecked {
                 totalCollateralValueUSD += getUSDValue(token, amount);
                 ++i;
+            }
+        }
+
+        uint256[] memory positionIds = s_userPositions[user];
+        uint256 positionsLength = positionIds.length;
+        for (uint256 j = 0; j < positionsLength; ) {
+            uint256 tokenId = positionIds[j];
+            UniPositionInfo memory positionInfo = _getUniPositionInfo(tokenId);
+            totalCollateralValueUSD += _getUniPositionValueUSD(positionInfo);
+            unchecked {
+                ++j;
             }
         }
     }
@@ -496,6 +581,10 @@ contract OrynEngine is ReentrancyGuard {
         return s_CollateralTokens[index];
     }
 
+    function getUserPositions(address user) external view returns (uint256[] memory) {
+        return s_userPositions[user];
+    }
+
     function getOrynUSDContractAddress() public view returns (OrynUSD) {
         return i_OrynUSD;
     }
@@ -510,6 +599,11 @@ contract OrynEngine is ReentrancyGuard {
 
     function getPythPriceAgeThreshold() public pure returns (uint256) {
         return PYTH_PRICE_AGE_THRESHOLD;
+    }
+
+    function getUniPositionValueUSD(uint256 tokenId) external view returns (uint256) {
+    UniPositionInfo memory positionInfo = _getUniPositionInfo(tokenId);
+    return _getUniPositionValueUSD(positionInfo);
     }
 
     /**
@@ -528,5 +622,109 @@ contract OrynEngine is ReentrancyGuard {
         } catch {
             revert OrynEngine__StalePrice();
         }
+    }
+
+    function onERC721Received(
+        address,
+        address,
+        uint256,
+        bytes calldata
+    ) external pure override returns (bytes4) {
+        return IERC721Receiver.onERC721Received.selector;
+    }
+
+    function getPositionManager() external view returns (IUniPositionManager) {
+        return i_positionManager;
+    }
+
+    function _validatePositionTokens(address token0, address token1) internal view {
+        if (s_priceFeeds[token0] == bytes32(0) || s_priceFeeds[token1] == bytes32(0)) {
+            revert OrynEngine__UnsupportedPositionTokens();
+        }
+    }
+
+    function _getUniPositionInfo(uint256 tokenId) internal view returns (UniPositionInfo memory positionInfo) {
+        (
+            ,
+            ,
+            address token0,
+            address token1,
+            uint24 fee,
+            int24 tickLower,
+            int24 tickUpper,
+            uint128 liquidity,
+            ,
+            ,
+            uint128 tokensOwed0,
+            uint128 tokensOwed1
+        ) = i_positionManager.positions(tokenId);
+
+        positionInfo = UniPositionInfo({
+            token0: token0,
+            token1: token1,
+            fee: fee,
+            tickLower: tickLower,
+            tickUpper: tickUpper,
+            liquidity: liquidity,
+            tokensOwed0: tokensOwed0,
+            tokensOwed1: tokensOwed1
+        });
+    }
+
+    function _getUniPositionValueUSD(UniPositionInfo memory positionInfo) internal view returns (uint256) {
+        address factory = i_positionManager.factory();
+        address poolAddress = IUniswapV3FactoryMinimal(factory).getPool(positionInfo.token0, positionInfo.token1, positionInfo.fee);
+        if (poolAddress == address(0)) {
+            revert OrynEngine__UninitializedPool();
+        }
+
+        (
+            uint160 sqrtPriceX96,
+            ,
+            ,
+            ,
+            ,
+            ,
+        ) = IUniswapV3PoolMinimal(poolAddress).slot0();
+
+        uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(positionInfo.tickLower);
+        uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(positionInfo.tickUpper);
+
+        (uint256 amount0Principal, uint256 amount1Principal) = LiquidityAmounts.getAmountsForLiquidity(
+            sqrtPriceX96,
+            sqrtRatioAX96,
+            sqrtRatioBX96,
+            positionInfo.liquidity
+        );
+
+        uint256 amount0Total = amount0Principal + uint256(positionInfo.tokensOwed0);
+        uint256 amount1Total = amount1Principal + uint256(positionInfo.tokensOwed1);
+
+        uint256 value0 = getUSDValue(positionInfo.token0, amount0Total);
+        uint256 value1 = getUSDValue(positionInfo.token1, amount1Total);
+
+        return value0 + value1;
+    }
+
+    function _removeUserPosition(address user, uint256 tokenId) internal {
+        uint256 index = s_positionIndex[tokenId];
+        uint256 lastIndex = s_userPositions[user].length - 1;
+
+        if (index != lastIndex) {
+            uint256 lastTokenId = s_userPositions[user][lastIndex];
+            s_userPositions[user][index] = lastTokenId;
+            s_positionIndex[lastTokenId] = index;
+        }
+
+        s_userPositions[user].pop();
+    }
+
+    function _calculateHealthFactor(uint256 collateralUSD, uint256 debt) internal pure returns (uint256) {
+        if (debt == 0) {
+            return type(uint256).max;
+        }
+
+        uint256 collateralAdjustedForThreshold = (collateralUSD * LIQUIDATION_TRESHOLD) / LIQUIDATION_PRECISION;
+        return (collateralAdjustedForThreshold * PRECISION) / debt;
     }
 }

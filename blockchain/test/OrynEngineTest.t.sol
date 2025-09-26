@@ -6,8 +6,13 @@ import "../src/OrynEngine.sol";
 import "../src/OrynUSD.sol";
 import "../src/mocks/MockPyth.sol";
 import "../src/mocks/MockERC20.sol";
+import "../src/mocks/MockUniswapV3Factory.sol";
+import "../src/mocks/MockUniswapV3Pool.sol";
+import "../src/mocks/MockNonfungiblePositionManager.sol";
 import "../src/interfaces/IPyth.sol";
 import "../src/interfaces/PythStructs.sol";
+import "@uniswap/v3-core/contracts/libraries/TickMath.sol";
+import "@uniswap/v3-periphery/contracts/libraries/LiquidityAmounts.sol";
 
 /**
  * @title OrynEngineTest
@@ -19,6 +24,9 @@ contract OrynEngineTest is Test {
     MockPyth public mockPyth;
     MockERC20 public weth;
     MockERC20 public wbtc;
+    MockUniswapV3Factory public mockFactory;
+    MockUniswapV3Pool public mockPool;
+    MockNonfungiblePositionManager public mockPositionManager;
     
     // Test addresses
     address public constant USER = address(0x1);
@@ -40,17 +48,26 @@ contract OrynEngineTest is Test {
     // BTC: $40000.00 = 4000000000000 * 10^(-8)  
     int64 public constant BTC_PRICE = 4000000000000; // $40000 with 8 decimals
     int32 public constant PRICE_EXPO = -8;           // Pyth typically uses -8 exponent
+    uint24 public constant POOL_FEE = 3000;
+    int24 public constant TICK_LOWER = -600;
+    int24 public constant TICK_UPPER = 600;
     
     event CollateralDeposited(address indexed user, address indexed token, uint256 indexed amount);
 
     function setUp() public {
         // Start prank as owner for deployment
         vm.startPrank(OWNER);
-        
+
         // Deploy mock contracts
         mockPyth = new MockPyth();
         weth = new MockERC20("Wrapped Ethereum", "WETH", 18);
         wbtc = new MockERC20("Wrapped Bitcoin", "WBTC", 8);
+        mockFactory = new MockUniswapV3Factory();
+
+        uint160 sqrtPriceX96 = TickMath.getSqrtRatioAtTick(0);
+        mockPool = new MockUniswapV3Pool(sqrtPriceX96, 0);
+        mockFactory.setPool(address(weth), address(wbtc), POOL_FEE, address(mockPool));
+        mockPositionManager = new MockNonfungiblePositionManager(address(mockFactory));
         
         // Set up mock prices in Pyth
         mockPyth.setPrice(ETH_USD_PRICE_ID, ETH_PRICE, 1000000, PRICE_EXPO, block.timestamp);
@@ -65,7 +82,7 @@ contract OrynEngineTest is Test {
         priceFeedIds[0] = ETH_USD_PRICE_ID;
         priceFeedIds[1] = BTC_USD_PRICE_ID;
         
-        orynEngine = new OrynEngine(tokenAddresses, priceFeedIds, address(mockPyth));
+        orynEngine = new OrynEngine(tokenAddresses, priceFeedIds, address(mockPyth), address(mockPositionManager));
         orynUSD = orynEngine.getOrynUSDContractAddress();
         
         vm.stopPrank();
@@ -80,6 +97,7 @@ contract OrynEngineTest is Test {
         vm.startPrank(USER);
         weth.approve(address(orynEngine), type(uint256).max);
         wbtc.approve(address(orynEngine), type(uint256).max);
+    mockPositionManager.setApprovalForAll(address(orynEngine), true);
         vm.stopPrank();
         
         vm.startPrank(LIQUIDATOR);
@@ -244,6 +262,61 @@ contract OrynEngineTest is Test {
         
         vm.stopPrank();
     }
+
+    function testDepositUniV3Position() public {
+        vm.startPrank(USER);
+
+        uint256 tokenId = _mintTestPosition(USER, 2 ether, 5e7); // 2 ETH and 0.5 BTC liquidity
+
+        uint256 initialPositions = orynEngine.getUserPositions(USER).length;
+        assertEq(initialPositions, 0);
+
+        orynEngine.depositUniPosition(tokenId);
+
+        uint256[] memory positions = orynEngine.getUserPositions(USER);
+        assertEq(positions.length, 1);
+        assertEq(positions[0], tokenId);
+
+        uint256 positionValueUSD = orynEngine.getUniPositionValueUSD(tokenId);
+        assertGt(positionValueUSD, 0);
+
+        vm.stopPrank();
+    }
+
+    function testMintAgainstUniV3Position() public {
+        vm.startPrank(USER);
+
+        uint256 tokenId = _mintTestPosition(USER, 3 ether, 1e8); // 3 ETH and 1 BTC liquidity
+
+        orynEngine.depositUniPosition(tokenId);
+
+        uint256 positionValueUSD = orynEngine.getUniPositionValueUSD(tokenId);
+        // Borrow 25% of value to remain overcollateralized
+        uint256 mintAmount = positionValueUSD / 4;
+
+        orynEngine.mintOrynUSD(mintAmount);
+
+        assertEq(orynUSD.balanceOf(USER), mintAmount);
+        assertGt(orynEngine.getHealthFactor(USER), orynEngine.getMinHealthFactor());
+
+        vm.stopPrank();
+    }
+
+    function testRedeemUniV3Position() public {
+        vm.startPrank(USER);
+
+        uint256 tokenId = _mintTestPosition(USER, 1 ether, 25e7); // 1 ETH and 2.5 BTC
+
+        orynEngine.depositUniPosition(tokenId);
+
+        // No debt minted, should allow redeem
+        orynEngine.redeemUniPosition(tokenId);
+
+        assertEq(mockPositionManager.ownerOf(tokenId), USER);
+        assertEq(orynEngine.getUserPositions(USER).length, 0);
+
+        vm.stopPrank();
+    }
     
     function testLiquidationSetup() public {
         vm.startPrank(USER);
@@ -295,8 +368,9 @@ contract OrynEngineTest is Test {
         vm.startPrank(poorUser);
         weth.approve(address(orynEngine), COLLATERAL_AMOUNT);
         
-        // Poor user deposits collateral and mints maximum OrynUSD
-        orynEngine.depositCollateralAndMintOrynUSD(address(weth), COLLATERAL_AMOUNT, MINT_AMOUNT);
+    // Poor user deposits collateral and mints OrynUSD
+    uint256 mintedAmount = 300 ether;
+    orynEngine.depositCollateralAndMintOrynUSD(address(weth), COLLATERAL_AMOUNT, mintedAmount);
         vm.stopPrank();
         
         // Simulate catastrophic ETH price drop to $50
@@ -313,10 +387,10 @@ contract OrynEngineTest is Test {
         
         vm.startPrank(richLiquidator);
         orynUSD.approve(address(orynEngine), type(uint256).max);
-        
-        uint256 debtToCover = 100 ether;
+
+    uint256 userDebtBefore = orynEngine.getOrynUSDMint(poorUser);
+    uint256 debtToCover = 100 ether;
         uint256 liquidatorCollateralBefore = weth.balanceOf(richLiquidator);
-        uint256 userDebtBefore = orynEngine.getOrynUSDMint(poorUser);
         
         console.log("User debt before liquidation:", userDebtBefore);
         console.log("Liquidator collateral before:", liquidatorCollateralBefore);
@@ -402,5 +476,35 @@ contract OrynEngineTest is Test {
         assertGt(healthFactor, orynEngine.getMinHealthFactor());
         
         vm.stopPrank();
+    }
+
+    function _mintTestPosition(address recipient, uint256 amount0Desired, uint256 amount1Desired)
+        internal
+        returns (uint256 tokenId)
+    {
+        uint160 sqrtPriceX96 = TickMath.getSqrtRatioAtTick(0);
+        uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(TICK_LOWER);
+        uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(TICK_UPPER);
+
+        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
+            sqrtPriceX96,
+            sqrtRatioAX96,
+            sqrtRatioBX96,
+            amount0Desired,
+            amount1Desired
+        );
+
+        MockNonfungiblePositionManager.PositionData memory positionData = MockNonfungiblePositionManager.PositionData({
+            token0: address(weth),
+            token1: address(wbtc),
+            fee: POOL_FEE,
+            tickLower: TICK_LOWER,
+            tickUpper: TICK_UPPER,
+            liquidity: liquidity,
+            tokensOwed0: 0,
+            tokensOwed1: 0
+        });
+
+        tokenId = mockPositionManager.mintPosition(recipient, positionData);
     }
 }
