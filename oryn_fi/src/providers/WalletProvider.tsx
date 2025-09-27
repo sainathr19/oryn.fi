@@ -4,12 +4,9 @@ import { QueryClientProvider, QueryClient } from '@tanstack/react-query'
 import { createAppKit } from '@reown/appkit/react'
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi'
 import { sepolia, rootstockTestnet, hederaTestnet, arbitrumSepolia, baseSepolia } from '@reown/appkit/networks'
+import { API } from '../constants/api'
 
-const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID
-
-if (!projectId) {
-    throw new Error('Project ID is not defined. Please set VITE_WALLETCONNECT_PROJECT_ID in your .env file')
-}
+const projectId = API().projectId
 
 const wagmiAdapter = new WagmiAdapter({
     networks: [sepolia, rootstockTestnet, hederaTestnet, arbitrumSepolia, baseSepolia],
