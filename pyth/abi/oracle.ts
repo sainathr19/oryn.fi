@@ -1,0 +1,497 @@
+export const oracleAbi = [
+    {
+        "type": "function",
+        "name": "getCurrentEmaPrice",
+        "inputs": [
+            {
+                "name": "id",
+                "type": "bytes32",
+                "internalType": "bytes32"
+            }
+        ],
+        "outputs": [
+            {
+                "name": "",
+                "type": "tuple",
+                "internalType": "struct PythStructs.Price",
+                "components": [
+                    {
+                        "name": "price",
+                        "type": "int64",
+                        "internalType": "int64"
+                    },
+                    {
+                        "name": "conf",
+                        "type": "uint64",
+                        "internalType": "uint64"
+                    },
+                    {
+                        "name": "expo",
+                        "type": "int32",
+                        "internalType": "int32"
+                    },
+                    {
+                        "name": "publishTime",
+                        "type": "uint256",
+                        "internalType": "uint256"
+                    }
+                ]
+            }
+        ],
+        "stateMutability": "view"
+    },
+    {
+        "type": "function",
+        "name": "getCurrentPrice",
+        "inputs": [
+            {
+                "name": "id",
+                "type": "bytes32",
+                "internalType": "bytes32"
+            }
+        ],
+        "outputs": [
+            {
+                "name": "",
+                "type": "tuple",
+                "internalType": "struct PythStructs.Price",
+                "components": [
+                    {
+                        "name": "price",
+                        "type": "int64",
+                        "internalType": "int64"
+                    },
+                    {
+                        "name": "conf",
+                        "type": "uint64",
+                        "internalType": "uint64"
+                    },
+                    {
+                        "name": "expo",
+                        "type": "int32",
+                        "internalType": "int32"
+                    },
+                    {
+                        "name": "publishTime",
+                        "type": "uint256",
+                        "internalType": "uint256"
+                    }
+                ]
+            }
+        ],
+        "stateMutability": "view"
+    },
+    {
+        "type": "function",
+        "name": "getEmaPrice",
+        "inputs": [
+            {
+                "name": "id",
+                "type": "bytes32",
+                "internalType": "bytes32"
+            }
+        ],
+        "outputs": [
+            {
+                "name": "price",
+                "type": "tuple",
+                "internalType": "struct PythStructs.Price",
+                "components": [
+                    {
+                        "name": "price",
+                        "type": "int64",
+                        "internalType": "int64"
+                    },
+                    {
+                        "name": "conf",
+                        "type": "uint64",
+                        "internalType": "uint64"
+                    },
+                    {
+                        "name": "expo",
+                        "type": "int32",
+                        "internalType": "int32"
+                    },
+                    {
+                        "name": "publishTime",
+                        "type": "uint256",
+                        "internalType": "uint256"
+                    }
+                ]
+            }
+        ],
+        "stateMutability": "view"
+    },
+    {
+        "type": "function",
+        "name": "getEmaPriceNoOlderThan",
+        "inputs": [
+            {
+                "name": "id",
+                "type": "bytes32",
+                "internalType": "bytes32"
+            },
+            {
+                "name": "age",
+                "type": "uint256",
+                "internalType": "uint256"
+            }
+        ],
+        "outputs": [
+            {
+                "name": "price",
+                "type": "tuple",
+                "internalType": "struct PythStructs.Price",
+                "components": [
+                    {
+                        "name": "price",
+                        "type": "int64",
+                        "internalType": "int64"
+                    },
+                    {
+                        "name": "conf",
+                        "type": "uint64",
+                        "internalType": "uint64"
+                    },
+                    {
+                        "name": "expo",
+                        "type": "int32",
+                        "internalType": "int32"
+                    },
+                    {
+                        "name": "publishTime",
+                        "type": "uint256",
+                        "internalType": "uint256"
+                    }
+                ]
+            }
+        ],
+        "stateMutability": "view"
+    },
+    {
+        "type": "function",
+        "name": "getEmaPriceUnsafe",
+        "inputs": [
+            {
+                "name": "id",
+                "type": "bytes32",
+                "internalType": "bytes32"
+            }
+        ],
+        "outputs": [
+            {
+                "name": "price",
+                "type": "tuple",
+                "internalType": "struct PythStructs.Price",
+                "components": [
+                    {
+                        "name": "price",
+                        "type": "int64",
+                        "internalType": "int64"
+                    },
+                    {
+                        "name": "conf",
+                        "type": "uint64",
+                        "internalType": "uint64"
+                    },
+                    {
+                        "name": "expo",
+                        "type": "int32",
+                        "internalType": "int32"
+                    },
+                    {
+                        "name": "publishTime",
+                        "type": "uint256",
+                        "internalType": "uint256"
+                    }
+                ]
+            }
+        ],
+        "stateMutability": "view"
+    },
+    {
+        "type": "function",
+        "name": "getPrice",
+        "inputs": [
+            {
+                "name": "id",
+                "type": "bytes32",
+                "internalType": "bytes32"
+            }
+        ],
+        "outputs": [
+            {
+                "name": "price",
+                "type": "tuple",
+                "internalType": "struct PythStructs.Price",
+                "components": [
+                    {
+                        "name": "price",
+                        "type": "int64",
+                        "internalType": "int64"
+                    },
+                    {
+                        "name": "conf",
+                        "type": "uint64",
+                        "internalType": "uint64"
+                    },
+                    {
+                        "name": "expo",
+                        "type": "int32",
+                        "internalType": "int32"
+                    },
+                    {
+                        "name": "publishTime",
+                        "type": "uint256",
+                        "internalType": "uint256"
+                    }
+                ]
+            }
+        ],
+        "stateMutability": "view"
+    },
+    {
+        "type": "function",
+        "name": "getPriceNoOlderThan",
+        "inputs": [
+            {
+                "name": "id",
+                "type": "bytes32",
+                "internalType": "bytes32"
+            },
+            {
+                "name": "age",
+                "type": "uint256",
+                "internalType": "uint256"
+            }
+        ],
+        "outputs": [
+            {
+                "name": "price",
+                "type": "tuple",
+                "internalType": "struct PythStructs.Price",
+                "components": [
+                    {
+                        "name": "price",
+                        "type": "int64",
+                        "internalType": "int64"
+                    },
+                    {
+                        "name": "conf",
+                        "type": "uint64",
+                        "internalType": "uint64"
+                    },
+                    {
+                        "name": "expo",
+                        "type": "int32",
+                        "internalType": "int32"
+                    },
+                    {
+                        "name": "publishTime",
+                        "type": "uint256",
+                        "internalType": "uint256"
+                    }
+                ]
+            }
+        ],
+        "stateMutability": "view"
+    },
+    {
+        "type": "function",
+        "name": "getPriceUnsafe",
+        "inputs": [
+            {
+                "name": "id",
+                "type": "bytes32",
+                "internalType": "bytes32"
+            }
+        ],
+        "outputs": [
+            {
+                "name": "price",
+                "type": "tuple",
+                "internalType": "struct PythStructs.Price",
+                "components": [
+                    {
+                        "name": "price",
+                        "type": "int64",
+                        "internalType": "int64"
+                    },
+                    {
+                        "name": "conf",
+                        "type": "uint64",
+                        "internalType": "uint64"
+                    },
+                    {
+                        "name": "expo",
+                        "type": "int32",
+                        "internalType": "int32"
+                    },
+                    {
+                        "name": "publishTime",
+                        "type": "uint256",
+                        "internalType": "uint256"
+                    }
+                ]
+            }
+        ],
+        "stateMutability": "view"
+    },
+    {
+        "type": "function",
+        "name": "getUpdateFee",
+        "inputs": [
+            {
+                "name": "",
+                "type": "bytes[]",
+                "internalType": "bytes[]"
+            }
+        ],
+        "outputs": [
+            {
+                "name": "feeAmount",
+                "type": "uint256",
+                "internalType": "uint256"
+            }
+        ],
+        "stateMutability": "pure"
+    },
+    {
+        "type": "function",
+        "name": "getValidTimePeriod",
+        "inputs": [],
+        "outputs": [
+            {
+                "name": "",
+                "type": "uint256",
+                "internalType": "uint256"
+            }
+        ],
+        "stateMutability": "view"
+    },
+    {
+        "type": "function",
+        "name": "setEmaPrice",
+        "inputs": [
+            {
+                "name": "id",
+                "type": "bytes32",
+                "internalType": "bytes32"
+            },
+            {
+                "name": "price",
+                "type": "int64",
+                "internalType": "int64"
+            },
+            {
+                "name": "conf",
+                "type": "uint64",
+                "internalType": "uint64"
+            },
+            {
+                "name": "expo",
+                "type": "int32",
+                "internalType": "int32"
+            },
+            {
+                "name": "publishTime",
+                "type": "uint256",
+                "internalType": "uint256"
+            }
+        ],
+        "outputs": [],
+        "stateMutability": "nonpayable"
+    },
+    {
+        "type": "function",
+        "name": "setPrice",
+        "inputs": [
+            {
+                "name": "id",
+                "type": "bytes32",
+                "internalType": "bytes32"
+            },
+            {
+                "name": "price",
+                "type": "int64",
+                "internalType": "int64"
+            },
+            {
+                "name": "conf",
+                "type": "uint64",
+                "internalType": "uint64"
+            },
+            {
+                "name": "expo",
+                "type": "int32",
+                "internalType": "int32"
+            },
+            {
+                "name": "publishTime",
+                "type": "uint256",
+                "internalType": "uint256"
+            }
+        ],
+        "outputs": [],
+        "stateMutability": "nonpayable"
+    },
+    {
+        "type": "function",
+        "name": "setValidTimePeriod",
+        "inputs": [
+            {
+                "name": "_validTimePeriod",
+                "type": "uint256",
+                "internalType": "uint256"
+            }
+        ],
+        "outputs": [],
+        "stateMutability": "nonpayable"
+    },
+    {
+        "type": "function",
+        "name": "updatePriceFeeds",
+        "inputs": [
+            {
+                "name": "",
+                "type": "bytes[]",
+                "internalType": "bytes[]"
+            }
+        ],
+        "outputs": [],
+        "stateMutability": "payable"
+    },
+    {
+        "type": "function",
+        "name": "updatePriceFeedsIfNecessary",
+        "inputs": [
+            {
+                "name": "",
+                "type": "bytes[]",
+                "internalType": "bytes[]"
+            },
+            {
+                "name": "",
+                "type": "bytes32[]",
+                "internalType": "bytes32[]"
+            },
+            {
+                "name": "",
+                "type": "uint64[]",
+                "internalType": "uint64[]"
+            }
+        ],
+        "outputs": [],
+        "stateMutability": "payable"
+    },
+    {
+        "type": "error",
+        "name": "PriceFeedNotFound",
+        "inputs": []
+    },
+    {
+        "type": "error",
+        "name": "StalePrice",
+        "inputs": []
+    }
+] as const;

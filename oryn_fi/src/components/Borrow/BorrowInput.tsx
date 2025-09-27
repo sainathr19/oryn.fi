@@ -13,6 +13,8 @@ import {
   DialogTrigger,
 } from "../UI/dialog";
 import { SelectToken } from "../UI/SelectToken";
+import { useAssets } from "../../hooks/useAssets";
+import type { Asset } from "../../types/assets";
 
 type BorrowInputType = {
   type: IOType;
@@ -21,16 +23,17 @@ type BorrowInputType = {
 export const BorrowInput: FC<BorrowInputType> = ({ type }) => {
   const label = type === IOType.collateral ? "Collateral" : "Loan";
 
-  const asset = {
-    symbol: "OUSDC",
-    logo: "https://garden.imgix.net/ethglobal/OrynUSDC.svg",
-    network: {
-      networkName: "Oryn",
-      networkLogo: "https://garden.imgix.net/ethglobal/OrynChain.svg",
-    },
-  };
-
+  const { assets, chains, loading, error } = useAssets();
+  const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
+  const [selectedChainName, setSelectedChainName] = useState<string>("sepolia");
   const [amount, setAmount] = useState("");
+
+  useEffect(() => {
+    if (assets.length > 0 && !selectedAsset) {
+      const defaultAsset = assets.find(asset => asset.symbol === "USDC") || assets[0];
+      setSelectedAsset(defaultAsset);
+    }
+  }, [assets, selectedAsset]);
 
   const [isFocused, setIsFocused] = useState(false);
   const [animated, setAnimated] = useState(true);
@@ -156,9 +159,8 @@ export const BorrowInput: FC<BorrowInputType> = ({ type }) => {
                     onAnimationsFinish={() => {
                       setIsAnimating(false);
                     }}
-                    className={`w-full text-start font-[inherit] tracking-normal duration-200 ease-in-out ${
-                      showLoadingOpacity ? "opacity-75" : ""
-                    }`}
+                    className={`w-full text-start font-[inherit] tracking-normal duration-200 ease-in-out ${showLoadingOpacity ? "opacity-75" : ""
+                      }`}
                     willChange
                   />
                 )}
@@ -167,32 +169,58 @@ export const BorrowInput: FC<BorrowInputType> = ({ type }) => {
           </span>
           <Dialog>
             <DialogTrigger>
-              {asset ? (
+              {selectedAsset && chains[selectedChainName] ? (
                 <TokenInfo
-                  symbol={asset.symbol}
-                  tokenLogo={asset.logo || ""}
-                  chainLogo={asset.network?.networkLogo}
-                  onClick={() => {}}
+                  symbol={selectedAsset.symbol}
+                  tokenLogo={selectedAsset.logo}
+                  chainLogo={chains[selectedChainName].networkLogo}
+                  onClick={() => { }}
                 />
+              ) : loading ? (
+                <div className="flex cursor-pointer items-center gap-1">
+                  <span>Loading...</span>
+                </div>
+              ) : error ? (
+                <div className="flex cursor-pointer items-center gap-1">
+                  <span>Error loading tokens</span>
+                </div>
               ) : (
                 <div
                   className="flex cursor-pointer items-center gap-1"
-                  onClick={() => {}}
+                  onClick={() => { }}
                 >
                   <span>Select token</span>
                   <ChevronDown className="w-5" />
                 </div>
               )}
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-w-md w-full">
               <DialogHeader>
-                <DialogTitle>Select a token?</DialogTitle>
+                <DialogTitle>Select a token</DialogTitle>
                 <DialogDescription>
-                  <div className="items-center justify-center gap-3 pt-4 grid grid-cols-2">
-                    <SelectToken asset={asset} />
-                    <SelectToken asset={asset} />
-                    <SelectToken asset={asset} />
-                    <SelectToken asset={asset} />
+                  <div className="max-h-96 overflow-y-auto pt-4">
+                    <div className="grid grid-cols-1 gap-2">
+                      {Object.entries(chains).map(([chainName, chain]) =>
+                        chain.assetConfig.map((asset) => (
+                          <SelectToken
+                            key={`${chainName}-${asset.tokenAddress}`}
+                            asset={{
+                              symbol: asset.symbol,
+                              logo: asset.logo,
+                              network: {
+                                networkName: chain.name,
+                                chainId: parseInt(chain.chainId),
+                                networkLogo: chain.networkLogo,
+                              },
+                            }}
+                            onClick={() => {
+                              setSelectedAsset(asset);
+                              setSelectedChainName(chainName);
+                            }}
+                          />
+                        ))
+                      ).flat()}
+                    </div>
                   </div>
                 </DialogDescription>
               </DialogHeader>
