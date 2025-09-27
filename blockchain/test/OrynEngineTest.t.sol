@@ -153,16 +153,14 @@ contract OrynEngineTest is Test {
         
         uint256 balanceBefore = weth.balanceOf(USER);
         
-        vm.expectEmit(true, true, true, true);
-        emit CollateralDeposited(USER, address(weth), COLLATERAL_AMOUNT);
-        
-        orynEngine.depositCollateral(address(weth), COLLATERAL_AMOUNT);
+        uint256 positionId = orynEngine.depositCollateral(address(weth), COLLATERAL_AMOUNT);
         
         uint256 deposited = orynEngine.getCollateralDepositedAmount(USER, address(weth));
         uint256 balanceAfter = weth.balanceOf(USER);
         
         assertEq(deposited, COLLATERAL_AMOUNT);
         assertEq(balanceBefore - balanceAfter, COLLATERAL_AMOUNT);
+        assertEq(positionId, 1);
         
         vm.stopPrank();
     }
@@ -171,10 +169,10 @@ contract OrynEngineTest is Test {
         vm.startPrank(USER);
         
         // First deposit collateral
-        orynEngine.depositCollateral(address(weth), COLLATERAL_AMOUNT);
+        uint256 positionId = orynEngine.depositCollateral(address(weth), COLLATERAL_AMOUNT);
         
         // Then mint OrynUSD
-        orynEngine.mintOrynUSD(MINT_AMOUNT);
+        orynEngine.mintOrynUSD(positionId, MINT_AMOUNT);
         
         uint256 minted = orynEngine.getOrynUSDMint(USER);
         uint256 balance = orynUSD.balanceOf(USER);
@@ -191,7 +189,7 @@ contract OrynEngineTest is Test {
     function testDepositCollateralAndMint() public {
         vm.startPrank(USER);
         
-        orynEngine.depositCollateralAndMintOrynUSD(address(weth), COLLATERAL_AMOUNT, MINT_AMOUNT);
+        uint256 positionId = orynEngine.depositCollateralAndMintOrynUSD(address(weth), COLLATERAL_AMOUNT, MINT_AMOUNT);
         
         uint256 deposited = orynEngine.getCollateralDepositedAmount(USER, address(weth));
         uint256 minted = orynEngine.getOrynUSDMint(USER);
@@ -200,6 +198,7 @@ contract OrynEngineTest is Test {
         assertEq(deposited, COLLATERAL_AMOUNT);
         assertEq(minted, MINT_AMOUNT);
         assertEq(balance, MINT_AMOUNT);
+        assertEq(positionId, 1);
         
         vm.stopPrank();
     }
@@ -207,9 +206,9 @@ contract OrynEngineTest is Test {
     function testHealthFactor() public {
         vm.startPrank(USER);
         
-        orynEngine.depositCollateralAndMintOrynUSD(address(weth), COLLATERAL_AMOUNT, MINT_AMOUNT);
+        uint256 positionId = orynEngine.depositCollateralAndMintOrynUSD(address(weth), COLLATERAL_AMOUNT, MINT_AMOUNT);
         
-        uint256 healthFactor = orynEngine.getHealthFactor(USER);
+        uint256 healthFactor = orynEngine.getHealthFactor(positionId);
         
         console.log("Health Factor:", healthFactor);
         console.log("Min Health Factor:", orynEngine.getMinHealthFactor());
@@ -225,12 +224,12 @@ contract OrynEngineTest is Test {
         vm.startPrank(USER);
         
         // Deposit collateral and mint some OrynUSD (less than max to keep healthy)
-        orynEngine.depositCollateralAndMintOrynUSD(address(weth), COLLATERAL_AMOUNT, MINT_AMOUNT / 2);
+    uint256 positionId = orynEngine.depositCollateralAndMintOrynUSD(address(weth), COLLATERAL_AMOUNT, MINT_AMOUNT / 2);
         
         uint256 redeemAmount = 1 ether;
         uint256 balanceBefore = weth.balanceOf(USER);
         
-        orynEngine.redeemCollateral(address(weth), redeemAmount);
+    orynEngine.redeemCollateral(positionId, redeemAmount);
         
         uint256 remainingCollateral = orynEngine.getCollateralDepositedAmount(USER, address(weth));
         uint256 balanceAfter = weth.balanceOf(USER);
@@ -245,14 +244,14 @@ contract OrynEngineTest is Test {
         vm.startPrank(USER);
         
         // Deposit collateral and mint OrynUSD
-        orynEngine.depositCollateralAndMintOrynUSD(address(weth), COLLATERAL_AMOUNT, MINT_AMOUNT);
+    uint256 positionId = orynEngine.depositCollateralAndMintOrynUSD(address(weth), COLLATERAL_AMOUNT, MINT_AMOUNT);
         
         uint256 burnAmount = 500 ether;
         
         // Approve OrynEngine to burn tokens
         orynUSD.approve(address(orynEngine), burnAmount);
         
-        orynEngine.burnOrynUSD(burnAmount);
+    orynEngine.burnOrynUSD(positionId, burnAmount);
         
         uint256 remainingMinted = orynEngine.getOrynUSDMint(USER);
         uint256 balance = orynUSD.balanceOf(USER);
@@ -271,11 +270,27 @@ contract OrynEngineTest is Test {
         uint256 initialPositions = orynEngine.getUserPositions(USER).length;
         assertEq(initialPositions, 0);
 
-        orynEngine.depositUniPosition(tokenId);
+        uint256 positionId = orynEngine.depositUniPosition(tokenId);
 
         uint256[] memory positions = orynEngine.getUserPositions(USER);
         assertEq(positions.length, 1);
-        assertEq(positions[0], tokenId);
+        assertEq(positions[0], positionId);
+
+        (
+            address owner,
+            OrynEngine.CollateralType collateralType,
+            address collateralToken,
+            uint256 amount,
+            uint256 recordedTokenId,
+            uint256 debt
+        ) = orynEngine.getPositionInfo(positionId);
+
+        assertEq(owner, USER);
+        assertEq(uint8(collateralType), uint8(OrynEngine.CollateralType.UNI_V3));
+        assertEq(recordedTokenId, tokenId);
+        assertEq(collateralToken, address(0));
+        assertEq(amount, 0);
+        assertEq(debt, 0);
 
         uint256 positionValueUSD = orynEngine.getUniPositionValueUSD(tokenId);
         assertGt(positionValueUSD, 0);
@@ -288,16 +303,16 @@ contract OrynEngineTest is Test {
 
         uint256 tokenId = _mintTestPosition(USER, 3 ether, 1e8); // 3 ETH and 1 BTC liquidity
 
-        orynEngine.depositUniPosition(tokenId);
+        uint256 positionId = orynEngine.depositUniPosition(tokenId);
 
         uint256 positionValueUSD = orynEngine.getUniPositionValueUSD(tokenId);
         // Borrow 25% of value to remain overcollateralized
         uint256 mintAmount = positionValueUSD / 4;
 
-        orynEngine.mintOrynUSD(mintAmount);
+        orynEngine.mintOrynUSD(positionId, mintAmount);
 
         assertEq(orynUSD.balanceOf(USER), mintAmount);
-        assertGt(orynEngine.getHealthFactor(USER), orynEngine.getMinHealthFactor());
+        assertGt(orynEngine.getHealthFactor(positionId), orynEngine.getMinHealthFactor());
 
         vm.stopPrank();
     }
@@ -307,10 +322,10 @@ contract OrynEngineTest is Test {
 
         uint256 tokenId = _mintTestPosition(USER, 1 ether, 25e7); // 1 ETH and 2.5 BTC
 
-        orynEngine.depositUniPosition(tokenId);
+        uint256 positionId = orynEngine.depositUniPosition(tokenId);
 
         // No debt minted, should allow redeem
-        orynEngine.redeemUniPosition(tokenId);
+        orynEngine.redeemUniPosition(positionId);
 
         assertEq(mockPositionManager.ownerOf(tokenId), USER);
         assertEq(orynEngine.getUserPositions(USER).length, 0);
@@ -360,7 +375,7 @@ contract OrynEngineTest is Test {
         );
 
         // Deposit position and evaluate collateral value
-        orynEngine.depositUniPosition(tokenId);
+        uint256 positionId = orynEngine.depositUniPosition(tokenId);
 
         uint256 enginePositionValue = orynEngine.getUniPositionValueUSD(tokenId);
         uint256 expectedValue = orynEngine.getUSDValue(token0, amount0Expected) +
@@ -370,15 +385,15 @@ contract OrynEngineTest is Test {
 
         // Mint stablecoin against position
         uint256 mintAmount = enginePositionValue / 4; // 25% LTV to remain healthy
-        orynEngine.mintOrynUSD(mintAmount);
+        orynEngine.mintOrynUSD(positionId, mintAmount);
 
         assertEq(orynUSD.balanceOf(USER), mintAmount);
-        assertGt(orynEngine.getHealthFactor(USER), orynEngine.getMinHealthFactor());
+        assertGt(orynEngine.getHealthFactor(positionId), orynEngine.getMinHealthFactor());
 
         // Repay debt and redeem NFT
         orynUSD.approve(address(orynEngine), mintAmount);
-        orynEngine.burnOrynUSD(mintAmount);
-        orynEngine.redeemUniPosition(tokenId);
+        orynEngine.burnOrynUSD(positionId, mintAmount);
+        orynEngine.redeemUniPosition(positionId);
 
         assertEq(mockPositionManager.ownerOf(tokenId), USER);
         assertEq(orynEngine.getUserPositions(USER).length, 0);
@@ -391,7 +406,8 @@ contract OrynEngineTest is Test {
         vm.startPrank(USER);
 
         uint256 tokenId = _mintTestPosition(USER, 2 ether, 4e7);
-        orynEngine.depositUniPosition(tokenId);
+        uint256 positionId = orynEngine.depositUniPosition(tokenId);
+        assertEq(orynEngine.getUserPositions(USER)[0], positionId);
 
         // Move pool price above upper bound so liquidity is entirely in token1
         int24 newTick = TICK_UPPER + 2000;
@@ -447,13 +463,15 @@ contract OrynEngineTest is Test {
         vm.startPrank(USER);
 
         uint256 tokenId = _mintTestPosition(USER, 3 ether, 6e7);
-        orynEngine.depositUniPosition(tokenId);
+        uint256 positionId = orynEngine.depositUniPosition(tokenId);
 
-        uint256 mintAmount = orynEngine.getUniPositionValueUSD(tokenId) / 3;
-        orynEngine.mintOrynUSD(mintAmount);
+    uint256 mintAmount = orynEngine.getUniPositionValueUSD(tokenId) / 3;
+    orynEngine.mintOrynUSD(positionId, mintAmount);
 
-        vm.expectRevert();
-        orynEngine.redeemUniPosition(tokenId);
+    (, , , , , uint256 debtBefore) = orynEngine.getPositionInfo(positionId);
+
+    vm.expectRevert(abi.encodeWithSelector(OrynEngine.OrynEngine__PositionHasDebt.selector, debtBefore));
+        orynEngine.redeemUniPosition(positionId);
 
         vm.stopPrank();
     }
@@ -494,39 +512,39 @@ contract OrynEngineTest is Test {
     
     function testLiquidationSetup() public {
         vm.startPrank(USER);
-        
+
         // User deposits collateral and mints OrynUSD
-        orynEngine.depositCollateralAndMintOrynUSD(address(weth), COLLATERAL_AMOUNT, MINT_AMOUNT);
-        
+        uint256 positionId = orynEngine.depositCollateralAndMintOrynUSD(address(weth), COLLATERAL_AMOUNT, MINT_AMOUNT);
+
         // Check user's initial state
-        uint256 initialHealthFactor = orynEngine.getHealthFactor(USER);
+        uint256 initialHealthFactor = orynEngine.getHealthFactor(positionId);
         uint256 userDebt = orynEngine.getOrynUSDMint(USER);
         uint256 userCollateral = orynEngine.getCollateralDepositedAmount(USER, address(weth));
-        
+
         console.log("Initial Health Factor:", initialHealthFactor);
         console.log("User Debt:", userDebt);
         console.log("User Collateral:", userCollateral);
-        
+
         assertGt(initialHealthFactor, orynEngine.getMinHealthFactor());
         assertEq(userDebt, MINT_AMOUNT);
         assertEq(userCollateral, COLLATERAL_AMOUNT);
-        
+
         vm.stopPrank();
-        
+
         // Simulate price drop - ETH drops to $100 (10000000000 * 10^(-8))
         mockPyth.setPrice(ETH_USD_PRICE_ID, 10000000000, 1000000, PRICE_EXPO, block.timestamp);
-        
+
         // Now user should be liquidatable
-        uint256 healthFactorAfterDrop = orynEngine.getHealthFactor(USER);
+        uint256 healthFactorAfterDrop = orynEngine.getHealthFactor(positionId);
         console.log("Health Factor after price drop:", healthFactorAfterDrop);
-        
+
         // Verify user is now liquidatable
         assertLt(healthFactorAfterDrop, orynEngine.getMinHealthFactor());
-        
+
         // Test that price changes are reflected correctly
         uint256 newUSDValue = orynEngine.getUSDValue(address(weth), 1 ether);
         console.log("New ETH USD Value after price drop:", newUSDValue);
-        
+
         // Should be approximately $100 now
         assertApproxEqRel(newUSDValue, 100 ether, 1e15); // 0.1% tolerance
     }
@@ -542,16 +560,16 @@ contract OrynEngineTest is Test {
         vm.startPrank(poorUser);
         weth.approve(address(orynEngine), COLLATERAL_AMOUNT);
         
-    // Poor user deposits collateral and mints OrynUSD
-    uint256 mintedAmount = 300 ether;
-    orynEngine.depositCollateralAndMintOrynUSD(address(weth), COLLATERAL_AMOUNT, mintedAmount);
+        // Poor user deposits collateral and mints OrynUSD
+        uint256 mintedAmount = 300 ether;
+        uint256 poorUserPositionId = orynEngine.depositCollateralAndMintOrynUSD(address(weth), COLLATERAL_AMOUNT, mintedAmount);
         vm.stopPrank();
         
         // Simulate catastrophic ETH price drop to $50
         mockPyth.setPrice(ETH_USD_PRICE_ID, 5000000000, 1000000, PRICE_EXPO, block.timestamp);
         
         // Verify user is liquidatable
-        uint256 healthFactor = orynEngine.getHealthFactor(poorUser);
+        uint256 healthFactor = orynEngine.getHealthFactor(poorUserPositionId);
         console.log("Poor user health factor:", healthFactor);
         assertLt(healthFactor, orynEngine.getMinHealthFactor());
         
@@ -563,14 +581,14 @@ contract OrynEngineTest is Test {
         orynUSD.approve(address(orynEngine), type(uint256).max);
 
     uint256 userDebtBefore = orynEngine.getOrynUSDMint(poorUser);
-    uint256 debtToCover = 100 ether;
+    uint256 debtToCover = userDebtBefore;
         uint256 liquidatorCollateralBefore = weth.balanceOf(richLiquidator);
         
         console.log("User debt before liquidation:", userDebtBefore);
         console.log("Liquidator collateral before:", liquidatorCollateralBefore);
         
         // Execute liquidation
-        orynEngine.liquidate(address(weth), poorUser, debtToCover);
+        orynEngine.liquidatePosition(poorUserPositionId, debtToCover);
         
         uint256 liquidatorCollateralAfter = weth.balanceOf(richLiquidator);
         uint256 userDebtAfter = orynEngine.getOrynUSDMint(poorUser);
@@ -626,13 +644,80 @@ contract OrynEngineTest is Test {
         uint256 threshold = orynEngine.getPythPriceAgeThreshold();
         assertEq(threshold, 60); // 1 minute as set in the contract
     }
+
+    function testGetUniPositionValueBreakdown() public {
+        vm.startPrank(USER);
+
+        uint256 tokenId = _mintTestPosition(USER, 10 ether, 20e8);
+        mockPositionManager.setApprovalForAll(address(orynEngine), true);
+        uint256 positionId = orynEngine.depositUniPosition(tokenId);
+
+        (
+            uint256 collateralValueUSD,
+            uint256 feeValueUSD,
+            uint256 totalValueUSD
+        ) = orynEngine.getPositionValueBreakdown(positionId);
+
+        assertEq(totalValueUSD, collateralValueUSD + feeValueUSD);
+
+        (
+            uint256 finCollateral,
+            uint256 finFees,
+            uint256 finTotal,
+            uint256 finDebt
+        ) = orynEngine.getPositionFinancials(positionId);
+
+        assertEq(finCollateral, collateralValueUSD);
+        assertEq(finFees, feeValueUSD);
+        assertEq(finTotal, totalValueUSD);
+        assertEq(finDebt, 0);
+
+        (
+            uint256 collateralInitial,
+            uint256 feeInitial
+        ) = orynEngine.getUniPositionValueBreakdown(positionId);
+
+        assertGt(collateralInitial, 0);
+        assertEq(feeInitial, 0);
+
+        mockPositionManager.updateTokensOwed(tokenId, 1e18, 2e8);
+
+        (
+            uint256 collateralAfter,
+            uint256 feesAfter
+        ) = orynEngine.getUniPositionValueBreakdown(positionId);
+
+        assertEq(collateralAfter, collateralInitial);
+        assertGt(feesAfter, 0);
+
+        (
+            uint256 collateralView,
+            uint256 feeView,
+            uint256 totalView
+        ) = orynEngine.getPositionValueBreakdown(positionId);
+
+    assertEq(collateralView, collateralAfter);
+        assertEq(feeView, feesAfter);
+        assertEq(totalView, collateralView + feeView);
+
+        (
+            ,
+            ,
+            ,
+            uint256 debtAfter
+        ) = orynEngine.getPositionFinancials(positionId);
+
+        assertEq(debtAfter, 0);
+
+        vm.stopPrank();
+    }
     
     function testMultipleCollateralTypes() public {
         vm.startPrank(USER);
         
         // Deposit both ETH and BTC as collateral
-        orynEngine.depositCollateral(address(weth), 5 ether);
-        orynEngine.depositCollateral(address(wbtc), 1e8); // 1 BTC (8 decimals)
+    uint256 ethPositionId = orynEngine.depositCollateral(address(weth), 5 ether);
+    orynEngine.depositCollateral(address(wbtc), 1e8); // 1 BTC (8 decimals)
         
         // Check both deposits
         uint256 ethDeposited = orynEngine.getCollateralDepositedAmount(USER, address(weth));
@@ -642,14 +727,145 @@ contract OrynEngineTest is Test {
         assertEq(btcDeposited, 1e8);
         
         // Mint OrynUSD against combined collateral
-        orynEngine.mintOrynUSD(MINT_AMOUNT);
+    orynEngine.mintOrynUSD(ethPositionId, MINT_AMOUNT);
         
-        uint256 healthFactor = orynEngine.getHealthFactor(USER);
+    uint256 healthFactor = orynEngine.getHealthFactor(ethPositionId);
         console.log("Health Factor with multiple collaterals:", healthFactor);
         
         assertGt(healthFactor, orynEngine.getMinHealthFactor());
         
         vm.stopPrank();
+    }
+
+    function testGetPositionValueBreakdownForERC20() public {
+        vm.startPrank(USER);
+
+        uint256 positionId = orynEngine.depositCollateral(address(weth), 5 ether);
+
+        (
+            uint256 collateralValueUSD,
+            uint256 feeValueUSD,
+            uint256 totalValueUSD
+        ) = orynEngine.getPositionValueBreakdown(positionId);
+
+        assertEq(feeValueUSD, 0);
+        assertEq(totalValueUSD, collateralValueUSD);
+
+        uint256 directValue = orynEngine.getPositionValueUSD(positionId);
+        assertApproxEqRel(collateralValueUSD, directValue, 1e15);
+
+        (
+            uint256 finCollateral,
+            uint256 finFees,
+            uint256 finTotal,
+            uint256 finDebt
+        ) = orynEngine.getPositionFinancials(positionId);
+
+        assertEq(finCollateral, collateralValueUSD);
+        assertEq(finFees, 0);
+        assertEq(finTotal, collateralValueUSD);
+        assertEq(finDebt, 0);
+
+        vm.stopPrank();
+    }
+
+    function testGetUserPositionDetailsAggregatesData() public {
+        vm.startPrank(USER);
+
+        uint256 erc20PositionId = orynEngine.depositCollateral(address(weth), 4 ether);
+        uint256 uniTokenId = _mintTestPosition(USER, 2 ether, 4e7);
+        uint256 uniPositionId = orynEngine.depositUniPosition(uniTokenId);
+
+        uint256 mintAmount = orynEngine.getPositionValueUSD(erc20PositionId) / 4;
+        orynEngine.mintOrynUSD(erc20PositionId, mintAmount);
+
+        OrynEngine.PositionDetails[] memory details = orynEngine.getUserPositionDetails(USER);
+        assertEq(details.length, 2);
+
+        bool erc20Found;
+        bool uniFound;
+        for (uint256 i = 0; i < details.length; i++) {
+            OrynEngine.PositionDetails memory detail = details[i];
+            if (detail.positionId == erc20PositionId) {
+                erc20Found = true;
+                assertEq(uint8(detail.collateralType), uint8(OrynEngine.CollateralType.ERC20));
+                assertEq(detail.token, address(weth));
+                assertEq(detail.uniTokenId, 0);
+                assertEq(detail.amount, 4 ether);
+                assertEq(detail.debt, mintAmount);
+                uint256 expectedHealth = orynEngine.getHealthFactor(erc20PositionId);
+                assertEq(detail.healthFactor, expectedHealth);
+                assertEq(detail.feeValueUSD, 0);
+                assertEq(detail.totalValueUSD, detail.collateralValueUSD);
+                assertEq(detail.debtValueUSD, mintAmount);
+            } else if (detail.positionId == uniPositionId) {
+                uniFound = true;
+                assertEq(uint8(detail.collateralType), uint8(OrynEngine.CollateralType.UNI_V3));
+                assertEq(detail.uniTokenId, uniTokenId);
+                assertEq(detail.token, address(0));
+                assertEq(detail.amount, 0);
+                uint256 expectedHF = orynEngine.getHealthFactor(uniPositionId);
+                assertEq(detail.healthFactor, expectedHF);
+                assertEq(detail.totalValueUSD, detail.collateralValueUSD + detail.feeValueUSD);
+                assertEq(detail.debtValueUSD, 0);
+            }
+            uint256 totalValue = orynEngine.getPositionValueUSD(detail.positionId);
+            assertApproxEqRel(detail.collateralValueUSD + detail.feeValueUSD, totalValue, 1e15);
+        }
+
+        assertTrue(erc20Found);
+        assertTrue(uniFound);
+
+        vm.stopPrank();
+    }
+
+    function testLiquidationAffectsOnlyTargetPosition() public {
+        address liquidator = makeAddr("isolatedLiquidator");
+        weth.mint(liquidator, 1000 ether);
+        wbtc.mint(liquidator, 1000e8);
+        vm.startPrank(liquidator);
+        weth.approve(address(orynEngine), type(uint256).max);
+        wbtc.approve(address(orynEngine), type(uint256).max);
+        vm.stopPrank();
+
+        address user = makeAddr("isolatedUser");
+        weth.mint(user, 10 ether);
+        wbtc.mint(user, 2e8);
+
+        vm.startPrank(user);
+        weth.approve(address(orynEngine), type(uint256).max);
+        wbtc.approve(address(orynEngine), type(uint256).max);
+
+        uint256 wethPositionId = orynEngine.depositCollateral(address(weth), 5 ether);
+        uint256 wbtcPositionId = orynEngine.depositCollateral(address(wbtc), 1e8);
+
+        uint256 mintAmount = 4000 ether;
+        orynEngine.mintOrynUSD(wethPositionId, mintAmount);
+
+        vm.stopPrank();
+
+        // Price crash for ETH only
+        mockPyth.setPrice(ETH_USD_PRICE_ID, 10000000000, 1000000, PRICE_EXPO, block.timestamp);
+
+        uint256 hfBefore = orynEngine.getHealthFactor(wethPositionId);
+        assertLt(hfBefore, orynEngine.getMinHealthFactor());
+        assertGt(orynEngine.getHealthFactor(wbtcPositionId), orynEngine.getMinHealthFactor());
+
+    vm.prank(address(orynEngine));
+    orynUSD.mint(liquidator, mintAmount);
+    vm.startPrank(liquidator);
+    orynUSD.approve(address(orynEngine), type(uint256).max);
+    orynEngine.liquidatePosition(wethPositionId, mintAmount);
+    vm.stopPrank();
+
+        // WETH position closed, WBTC position intact
+    vm.expectRevert(abi.encodeWithSelector(OrynEngine.OrynEngine__PositionDoesNotExist.selector, wethPositionId));
+    orynEngine.getPositionInfo(wethPositionId);
+
+        (address owner,, address token,, , uint256 debt) = orynEngine.getPositionInfo(wbtcPositionId);
+        assertEq(owner, user);
+        assertEq(token, address(wbtc));
+        assertEq(debt, 0);
     }
 
     function _mintTestPosition(address recipient, uint256 amount0Desired, uint256 amount1Desired)
