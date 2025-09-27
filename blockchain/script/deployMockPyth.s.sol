@@ -11,7 +11,8 @@ contract DeployMockPyth is Script {
         // vm.startBroadcast(deployerPrivateKey);
         vm.startBroadcast();
         
-        MockPyth mockPyth = MockPyth(address(0x818fC108459769e8D18dCcEc6768936720174155));
+        // MockPyth mockPyth = MockPyth(address(0x818fC108459769e8D18dCcEc6768936720174155));
+        MockPyth mockPyth = new MockPyth();
 
     //     function setPrice(
     //     bytes32 id,
