@@ -19,20 +19,24 @@ const Navbar = () => {
         <div className="flex items-center justify-end gap-12">
           <ul className="flex items-center justify-center gap-12 text-md">
             <li>
-              <button 
+              <button
                 onClick={() => navigate("/borrow")}
                 className={`hover:text-purple-600 transition-colors ${
-                  location.pathname === "/borrow" ? "text-purple-600 font-semibold" : "text-gray-700"
+                  location.pathname === "/borrow"
+                    ? "text-purple-600 font-semibold"
+                    : "text-gray-700"
                 }`}
               >
                 Borrow
               </button>
             </li>
             <li>
-              <button 
+              <button
                 onClick={() => navigate("/")}
                 className={`hover:text-purple-600 transition-colors ${
-                  location.pathname === "/" ? "text-purple-600 font-semibold" : "text-gray-700"
+                  location.pathname === "/"
+                    ? "text-purple-600 font-semibold"
+                    : "text-gray-700"
                 }`}
               >
                 Dashboard
