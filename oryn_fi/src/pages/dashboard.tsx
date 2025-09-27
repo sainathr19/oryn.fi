@@ -104,7 +104,9 @@ export const Dashboard = () => {
     try {
       setRepaySuccess(false);
       const amount = BigInt(parseFloat(repayAmount) * Math.pow(10, 6)); // OUSDC has 6 decimals
-      await burnOrynUSD(Number(selectedPosition.positionId), amount);
+
+      const result = await burnOrynUSD(Number(selectedPosition.positionId), amount);
+      console.log("Repay completed:", result);
       setRepaySuccess(true);
       setRepayAmount("");
     } catch (error) {
