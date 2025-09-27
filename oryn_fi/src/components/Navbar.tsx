@@ -1,8 +1,8 @@
+import { useLocation, useNavigate } from "react-router-dom";
 import { Icon } from "../assets/Icon";
 import { Typo } from "../assets/Typo";
+import { WalletConnectButton } from "./UI/WalletConnect";
 import { Button } from "./UI/Button";
-import { useNavigate, useLocation } from "react-router-dom";
-import { ConnectButton } from "./UI/ConnectButton";
 
 const Navbar = () => {
   const navigate = useNavigate();
@@ -28,8 +28,7 @@ const Navbar = () => {
               <a href="/borrow">Borrow</a>
             </li>
           </ul>
-          {location.pathname === "/borrow" ? <ConnectButton /> : <Button onClick={handleLaunchApp}>Launch App</Button>}
-        </div>
+          {location.pathname === "/borrow" ? <WalletConnectButton /> : <Button onClick={handleLaunchApp}>Launch App</Button>}        </div>
       </div>
     </nav>
   );
