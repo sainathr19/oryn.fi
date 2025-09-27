@@ -1,33 +1,21 @@
-import { ethers } from 'ethers';
-import { OracleManager } from './core/oracle-manager';
+import { MultichainManager } from './core/multichain-manager';
 import { ConfigurationManager } from './config/settings';
-import { oracleAbi } from '../abi/oracle';
 import { FILE_PATHS } from './utils/constants';
 
 async function main(): Promise<void> {
-  try {
+  try {    
     // Load configuration
     const config = ConfigurationManager.fromJson(FILE_PATHS.CONFIG_FILE);
     
-    // Create provider
-    const provider = new ethers.JsonRpcProvider(config.rpcUrl);
+    console.log(`Loaded configuration for ${config.chains.length} chains:`);
+    config.chains.forEach(chain => {
+      console.log(`  - ${chain.chainName} (Chain ID: ${chain.chainId}) - ${chain.enabled ? 'Enabled' : 'Disabled'}`);
+    });
 
-    // Create wallet from private key
-    const wallet = new ethers.Wallet(config.privateKey, provider);
-    const signerAddress = wallet.address;
-    console.log('Signer address:', signerAddress);
-
-    // Validate oracle address
-    if (!ethers.isAddress(config.oracleAddress)) {
-      throw new Error(`Invalid oracle address: ${config.oracleAddress}`);
-    }
-
-    const oracleContract = new ethers.Contract(config.oracleAddress, oracleAbi, wallet);
-
-    // Create OracleManager instance
-    const oracleManager = new OracleManager(oracleContract);
-
-    await oracleManager.startPriceUpdates();
+    // Create MultichainManager
+    const multichainManager = new MultichainManager(config.chains);
+    // Start price updates for all chains
+    await multichainManager.startAllChains();
 
   } catch (error) {
     console.error('Fatal error in main:', error);
