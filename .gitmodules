@@ -1,0 +1,6 @@
+[submodule "blockchain/lib/v3-core"]
+	path = blockchain/lib/v3-core
+	url = https://github.com/Uniswap/v3-core
+[submodule "blockchain/lib/v3-periphery"]
+	path = blockchain/lib/v3-periphery
+	url = https://github.com/Uniswap/v3-periphery
