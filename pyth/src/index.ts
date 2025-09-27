@@ -12,7 +12,7 @@ export { fetchPythPriceData } from './services/pyth-price-service';
 export { ConfigurationManager } from './config/settings';
 
 // Types
-export { ApplicationConfig, Settings } from './types';
+export { ApplicationConfig, ChainConfig, LegacyApplicationConfig } from './types';
 
 // Constants
 export * from './utils/constants';
