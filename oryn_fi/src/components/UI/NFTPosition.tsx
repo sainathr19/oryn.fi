@@ -1,6 +1,28 @@
-export const NFTPosition = () => {
+import { useNFTStore } from '../../stores/nftStore';
+
+interface NFTPositionProps {
+  tokenId?: number;
+}
+
+export const NFTPosition = ({ tokenId }: NFTPositionProps) => {
+  const { selectedNFT, setSelectedNFT } = useNFTStore();
+  const isSelected = selectedNFT.tokenId === tokenId;
+
+  const handleClick = () => {
+    if (tokenId) {
+      setSelectedNFT(tokenId);
+    }
+  };
+
   return (
-    <div className="flex flex-col gap-3 rounded-2xl bg-white/75 backdrop-blur-md p-4 hover:bg-white hover:scale-[101%] transition-all duration-200 ease-in-out cursor-pointer">
+    <div 
+      className={`flex flex-col gap-3 rounded-2xl backdrop-blur-md p-4 hover:bg-primary/10 transition-all duration-200 ease-in-out cursor-pointer ${
+        isSelected 
+          ? 'bg-primary/20 border-2 border-primary' 
+          : 'bg-white/75 hover:bg-white'
+      }`}
+      onClick={handleClick}
+    >
       <div className="flex items-center justify-between">
         <div className="flex items-center justify-between gap-3">
           <h5 className="text-md tracking-tighter flex font-medium items-center gap-1">
@@ -9,7 +31,7 @@ export const NFTPosition = () => {
             <span className="inline-flex min-w-2 min-h-2 bg-primary rounded-full" />{" "}
             USDC
           </h5>
-          <p className="text-xs text-light-grey">#12345</p>
+          <p className="text-xs text-light-grey">#{tokenId || 'Loading...'}</p>
         </div>
         <span className="text-xs items-center flex justify-center px-3 py-1 bg-primary/80 rounded-full text-white">
           Available

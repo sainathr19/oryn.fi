@@ -4,8 +4,7 @@ import { Button } from "../UI/Button";
 import { InfoIcon } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../UI/tooltip";
 import { useAccount } from "wagmi";
-import { useNFT } from "../../hooks/useNFT";
-
+import { useNFTStore } from "../../stores/nftStore";
 const healthFactor = 1.8;
 
 const getHealthFactorColor = (hf: number) => {
@@ -16,16 +15,24 @@ const getHealthFactorColor = (hf: number) => {
 };
 
 export const Kiosk = () => {
-  const { nftContracts } = useNFT();
-  console.log("nftContracts", nftContracts);
   const { address } = useAccount();
+  const { selectedNFT } = useNFTStore();
 
   return address ? (
     <div className="flex flex-col gap-3 px-2 pb-3 pt-2 sm:px-3 sm:pb-4 sm:pt-3 w-full text-dark-grey">
       <h4 className="text-sm font-medium sticky inset-0">
         Selected NFT Details
       </h4>
-      <div className="gap-2 rounded-2xl bg-white/50 p-4 grid grid-cols-2 mt-2">
+      {!selectedNFT.tokenId ? (
+        <div className="flex items-center justify-center h-full min-h-[400px] rounded-2xl bg-gray-50 border border-gray-200">
+          <div className="text-center">
+            <p className="text-gray-600 text-sm font-medium">No NFT selected</p>
+            <p className="text-gray-500 text-xs mt-1">Click on an NFT from the list to view details</p>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="gap-2 rounded-2xl bg-white/50 p-4 grid grid-cols-2 mt-2">
         <span className="flex items-center justify-start gap-1.5">
           <h5 className="text-sm font-medium text-mid-grey">Pair:</h5>
           <p className="text-lg tracking-tighter font-medium">
@@ -34,7 +41,9 @@ export const Kiosk = () => {
         </span>
         <span className="flex items-center justify-start gap-1.5">
           <h5 className="text-sm font-medium text-mid-grey">NFT ID:</h5>
-          <p className="text-lg font-medium">#12345</p>
+          <p className="text-lg font-medium">
+            {selectedNFT.tokenId ? `#${selectedNFT.tokenId}` : 'No NFT selected'}
+          </p>
         </span>
         <span className="flex items-center justify-start gap-1.5">
           <h5 className="text-sm font-medium text-mid-grey">Current Value:</h5>
@@ -191,9 +200,11 @@ export const Kiosk = () => {
               >
               {buttonLabel}
               </Button> */}
-      <Button size="lg" className="w-full">
-        Borrow
-      </Button>
+          <Button size="lg" className="w-full">
+            Borrow
+          </Button>
+        </>
+      )}
     </div>
   ) : (
     <div className="flex items-center justify-center w-full h-full rounded-2xl text-dark-grey">
