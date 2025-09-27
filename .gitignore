@@ -2,3 +2,4 @@
 oryn_fi/.env*
 pyth-oracle/.env*
 pyth-oracle/target/
+pyth-oracle/Settings.toml
