@@ -1,6 +1,6 @@
 import { Icon } from "../assets/Icon";
 import { Typo } from "../assets/Typo";
-import { Button } from "./UI/Button";
+import { WalletConnectButton } from "./UI/WalletConnect";
 
 const Navbar = () => {
   return (
@@ -19,9 +19,7 @@ const Navbar = () => {
               <a href="/borrow">Borrow</a>
             </li>
           </ul>
-          <Button variant="primary" size="md">
-            Connect
-          </Button>
+          <WalletConnectButton />
         </div>
       </div>
     </nav>
