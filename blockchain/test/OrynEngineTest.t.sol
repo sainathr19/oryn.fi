@@ -97,7 +97,7 @@ contract OrynEngineTest is Test {
         vm.startPrank(USER);
         weth.approve(address(orynEngine), type(uint256).max);
         wbtc.approve(address(orynEngine), type(uint256).max);
-    mockPositionManager.setApprovalForAll(address(orynEngine), true);
+        mockPositionManager.setApprovalForAll(address(orynEngine), true);
         vm.stopPrank();
         
         vm.startPrank(LIQUIDATOR);
@@ -314,6 +314,180 @@ contract OrynEngineTest is Test {
 
         assertEq(mockPositionManager.ownerOf(tokenId), USER);
         assertEq(orynEngine.getUserPositions(USER).length, 0);
+
+        vm.stopPrank();
+    }
+
+    function testUniV3PositionFullCDPFlow() public {
+        vm.startPrank(USER);
+
+        // Mint a position with defined token balances
+        uint256 tokenId = _mintTestPosition(USER, 4 ether, 8e7); // 4 ETH and 0.8 BTC liquidity
+
+        (
+            ,
+            ,
+            address token0,
+            address token1,
+            uint24 fee,
+            int24 tickLower,
+            int24 tickUpper,
+            uint128 liquidity,
+            ,
+            ,
+            uint128 tokensOwed0,
+            uint128 tokensOwed1
+        ) = mockPositionManager.positions(tokenId);
+
+        assertEq(tokensOwed0, 0);
+        assertEq(tokensOwed1, 0);
+
+        // Verify metadata and pool discovery
+        assertEq(token0, address(weth));
+        assertEq(token1, address(wbtc));
+        address poolAddress = mockFactory.getPool(token0, token1, fee);
+        assertEq(poolAddress, address(mockPool));
+
+        (uint160 sqrtPriceX96, , , , , , ) = mockPool.slot0();
+        uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(tickLower);
+        uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(tickUpper);
+
+        (uint256 amount0Expected, uint256 amount1Expected) = LiquidityAmounts.getAmountsForLiquidity(
+            sqrtPriceX96,
+            sqrtRatioAX96,
+            sqrtRatioBX96,
+            liquidity
+        );
+
+        // Deposit position and evaluate collateral value
+        orynEngine.depositUniPosition(tokenId);
+
+        uint256 enginePositionValue = orynEngine.getUniPositionValueUSD(tokenId);
+        uint256 expectedValue = orynEngine.getUSDValue(token0, amount0Expected) +
+            orynEngine.getUSDValue(token1, amount1Expected);
+
+        assertApproxEqRel(enginePositionValue, expectedValue, 1e15); // 0.1% tolerance
+
+        // Mint stablecoin against position
+        uint256 mintAmount = enginePositionValue / 4; // 25% LTV to remain healthy
+        orynEngine.mintOrynUSD(mintAmount);
+
+        assertEq(orynUSD.balanceOf(USER), mintAmount);
+        assertGt(orynEngine.getHealthFactor(USER), orynEngine.getMinHealthFactor());
+
+        // Repay debt and redeem NFT
+        orynUSD.approve(address(orynEngine), mintAmount);
+        orynEngine.burnOrynUSD(mintAmount);
+        orynEngine.redeemUniPosition(tokenId);
+
+        assertEq(mockPositionManager.ownerOf(tokenId), USER);
+        assertEq(orynEngine.getUserPositions(USER).length, 0);
+        assertEq(orynEngine.getOrynUSDMint(USER), 0);
+
+        vm.stopPrank();
+    }
+
+    function testUniV3PositionOutOfRangeValuation() public {
+        vm.startPrank(USER);
+
+        uint256 tokenId = _mintTestPosition(USER, 2 ether, 4e7);
+        orynEngine.depositUniPosition(tokenId);
+
+        // Move pool price above upper bound so liquidity is entirely in token1
+        int24 newTick = TICK_UPPER + 2000;
+        uint160 newSqrtPriceX96 = TickMath.getSqrtRatioAtTick(newTick);
+        mockPool.setSlot0(newSqrtPriceX96, newTick);
+
+        (
+            ,
+            ,
+            address token0,
+            address token1,
+            uint24 fee,
+            int24 tickLowerLocal,
+            int24 tickUpperLocal,
+            uint128 liquidity,
+            ,
+            ,
+            uint128 tokensOwed0,
+            uint128 tokensOwed1
+        ) = mockPositionManager.positions(tokenId);
+
+        assertEq(fee, POOL_FEE);
+        assertEq(tickLowerLocal, TICK_LOWER);
+        assertEq(tickUpperLocal, TICK_UPPER);
+        assertEq(tokensOwed0, 0);
+        assertEq(tokensOwed1, 0);
+        assertEq(token0, address(weth));
+        assertEq(token1, address(wbtc));
+
+        uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(TICK_LOWER);
+        uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(TICK_UPPER);
+
+        (uint256 amount0Expected, uint256 amount1Expected) = LiquidityAmounts.getAmountsForLiquidity(
+            newSqrtPriceX96,
+            sqrtRatioAX96,
+            sqrtRatioBX96,
+            liquidity
+        );
+
+        assertEq(amount0Expected, 0);
+        uint256 expectedValue = orynEngine.getUSDValue(token1, amount1Expected);
+        uint256 engineValue = orynEngine.getUniPositionValueUSD(tokenId);
+
+        assertApproxEqRel(engineValue, expectedValue, 1e15);
+
+        // reset pool state for subsequent tests
+        mockPool.setSlot0(TickMath.getSqrtRatioAtTick(0), 0);
+
+        vm.stopPrank();
+    }
+
+    function testRedeemUniPositionWithOutstandingDebtReverts() public {
+        vm.startPrank(USER);
+
+        uint256 tokenId = _mintTestPosition(USER, 3 ether, 6e7);
+        orynEngine.depositUniPosition(tokenId);
+
+        uint256 mintAmount = orynEngine.getUniPositionValueUSD(tokenId) / 3;
+        orynEngine.mintOrynUSD(mintAmount);
+
+        vm.expectRevert();
+        orynEngine.redeemUniPosition(tokenId);
+
+        vm.stopPrank();
+    }
+
+    function testDepositUniPositionWithUnsupportedTokensReverts() public {
+        MockERC20 otherToken = new MockERC20("Other Token", "OTH", 18);
+
+        uint160 sqrtPriceX96 = TickMath.getSqrtRatioAtTick(0);
+        uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(TICK_LOWER);
+        uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(TICK_UPPER);
+        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
+            sqrtPriceX96,
+            sqrtRatioAX96,
+            sqrtRatioBX96,
+            1 ether,
+            1 ether
+        );
+
+        MockNonfungiblePositionManager.PositionData memory positionData = MockNonfungiblePositionManager.PositionData({
+            token0: address(otherToken),
+            token1: address(weth),
+            fee: POOL_FEE,
+            tickLower: TICK_LOWER,
+            tickUpper: TICK_UPPER,
+            liquidity: liquidity,
+            tokensOwed0: 0,
+            tokensOwed1: 0
+        });
+
+        vm.startPrank(USER);
+        uint256 tokenId = mockPositionManager.mintPosition(USER, positionData);
+
+        vm.expectRevert(OrynEngine.OrynEngine__UnsupportedPositionTokens.selector);
+        orynEngine.depositUniPosition(tokenId);
 
         vm.stopPrank();
     }
