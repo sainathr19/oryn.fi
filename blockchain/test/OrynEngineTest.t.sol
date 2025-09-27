@@ -121,7 +121,10 @@ contract OrynEngineTest is Test {
     
     function testPythPriceIntegration() public {
         // Test that we can get latest price from Pyth
-        PythStructs.Price memory price = orynEngine.getLatestPythPrice(address(weth));
+        PythStructs.Price memory price = orynEngine.getPriceNoOlderThan(
+            address(weth),
+            orynEngine.getPythPriceAgeThreshold()
+        );
         
         assertEq(price.price, ETH_PRICE);
         assertEq(price.expo, PRICE_EXPO);
@@ -609,16 +612,16 @@ contract OrynEngineTest is Test {
         
         // Set a very old timestamp to simulate stale price
         mockPyth.setPrice(ETH_USD_PRICE_ID, ETH_PRICE, 1000000, PRICE_EXPO, block.timestamp - 400);
-        
+
         vm.expectRevert(OrynEngine.OrynEngine__StalePrice.selector);
-        orynEngine.getLatestPythPrice(address(weth));
+        orynEngine.getPriceNoOlderThan(address(weth), orynEngine.getPythPriceAgeThreshold());
     }
     
     function testRevertsOnZeroPrice() public {
         // Set price to zero
         mockPyth.setPrice(ETH_USD_PRICE_ID, 0, 1000000, PRICE_EXPO, block.timestamp);
         
-        vm.expectRevert(OrynEngine.OrynEngine__StalePrice.selector);
+        vm.expectRevert(OrynEngine.OrynEngine__InvalidPrice.selector);
         orynEngine.getUSDValue(address(weth), 1 ether);
     }
     
@@ -626,10 +629,10 @@ contract OrynEngineTest is Test {
         // Set negative price
         mockPyth.setPrice(ETH_USD_PRICE_ID, -100000000000, 1000000, PRICE_EXPO, block.timestamp);
         
-        vm.expectRevert(OrynEngine.OrynEngine__StalePrice.selector);
+        vm.expectRevert(OrynEngine.OrynEngine__InvalidPrice.selector);
         orynEngine.getUSDValue(address(weth), 1 ether);
     }
-    
+
     function testGetPriceFeedId() public {
         bytes32 feedId = orynEngine.getPriceFeedId(address(weth));
         assertEq(feedId, ETH_USD_PRICE_ID);

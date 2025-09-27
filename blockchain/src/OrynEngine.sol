@@ -14,6 +14,7 @@ import "./interfaces/IUniswapV3PoolMinimal.sol";
 import "./interfaces/IUniswapV3FactoryMinimal.sol";
 import "@uniswap/v3-core/contracts/libraries/TickMath.sol";
 import "@uniswap/v3-periphery/contracts/libraries/LiquidityAmounts.sol";
+// import "@uniswap/v3-periphery/contracts/interfaces/INonfungiblePositionManager.sol";
 
 contract OrynEngine is ReentrancyGuard, IERC721Receiver {
     error OrynEngine__NeedsMoreThanZero();
@@ -37,6 +38,8 @@ contract OrynEngine is ReentrancyGuard, IERC721Receiver {
     error OrynEngine__PositionNotUni(uint256 positionId);
     error OrynEngine__InsufficientCollateral();
     error OrynEngine__PositionAlreadyDeposited(uint256 tokenId);
+    error OrynEngine__InvalidPrice();
+    error OrynEngine__InvalidTickRange(int24 tickLower, int24 tickUpper);
 
     enum CollateralType {
         ERC20,
@@ -83,9 +86,13 @@ contract OrynEngine is ReentrancyGuard, IERC721Receiver {
     uint256 private constant MIN_HEALTH_FACTOR = 1e18;
     uint256 private constant LIQUIDATION_BONUS = 10;
     uint256 private constant PYTH_PRICE_AGE_THRESHOLD = 60;
+    int24 private constant MIN_UNI_TICK = -887272;
+    int24 private constant MAX_UNI_TICK = 887272;
+
 
     IPyth private immutable i_pyth;
     IUniPositionManager private immutable i_positionManager;
+    // INonfungiblePositionManager private immutable i_positionManager;
     OrynUSD private immutable i_OrynUSD;
 
     mapping(address token => bytes32 priceFeedId) private s_priceFeeds;
@@ -387,7 +394,7 @@ contract OrynEngine is ReentrancyGuard, IERC721Receiver {
         s_userTotalBorrowed[owner] -= debtToCover;
 
         if (position.collateralType == CollateralType.ERC20) {
-            uint256 collateralToSeize = getTokenAmountinUSD(position.token, debtToCover);
+            uint256 collateralToSeize = _getTokenAmountFromUSD(position.token, debtToCover);
             uint256 bonusCollateral = (collateralToSeize * LIQUIDATION_BONUS) / LIQUIDATION_PRECISION;
             uint256 totalCollateral = collateralToSeize + bonusCollateral;
             if (totalCollateral > position.amount) {
@@ -429,32 +436,60 @@ contract OrynEngine is ReentrancyGuard, IERC721Receiver {
         emit PositionLiquidated(positionId, msg.sender, debtToCover);
     }
 
-    function getTokenAmountinUSD(address token, uint256 USDAmountInWei) public view returns (uint256) {
-        uint256 price = _getNormalizedPrice(token);
-        uint256 amountIn18 = (USDAmountInWei * PRECISION) / price;
-        return _from18Decimals(token, amountIn18);
+    function getTokenAmountinUSD(address token, uint256 USDAmountInWei) external view returns (uint256) {
+        return _getTokenAmountFromUSD(token, USDAmountInWei);
     }
 
-    function getUSDValue(address token, uint256 amount) public view returns (uint256) {
-        uint256 price = _getNormalizedPrice(token);
-        uint256 amountIn18 = _to18Decimals(token, amount);
-        return (price * amountIn18) / PRECISION;
+    function getUSDValue(address token, uint256 amount) external view returns (uint256) {
+        return _getUSDValue(token, amount);
     }
 
-    function getAccountCollateralValue(address user) public view returns (uint256 totalCollateralValueUSD) {
+    function getAccountCollateralValue(address user) external view returns (uint256 totalCollateralValueUSD) {
         uint256[] memory positionIds = s_userPositions[user];
         uint256 length = positionIds.length;
         for (uint256 i = 0; i < length; ) {
-            totalCollateralValueUSD += getPositionValueUSD(positionIds[i]);
+            totalCollateralValueUSD += _positionValueUSD(s_positions[positionIds[i]]);
             unchecked {
                 ++i;
             }
         }
     }
 
-    function getPositionValueUSD(uint256 positionId) public view returns (uint256) {
+    function getPositionValueUSD(uint256 positionId) external view returns (uint256) {
         Position storage position = _getPosition(positionId);
         return _positionValueUSD(position);
+    }
+
+    function getUniPositionValueUSD(uint256 tokenId) external view returns (uint256) {
+        UniPositionInfo memory positionInfo = _getUniPositionInfo(tokenId);
+        return _getUniPositionValueUSD(positionInfo);
+    }
+
+    function getUniPositionValueBreakdown(uint256 positionId)
+        external
+        view
+        returns (uint256 collateralValueUSD, uint256 feeValueUSD)
+    {
+        Position storage position = _getPosition(positionId);
+        if (position.collateralType != CollateralType.UNI_V3) {
+            revert OrynEngine__PositionNotUni(positionId);
+        }
+
+        UniPositionInfo memory positionInfo = _getUniPositionInfo(position.uniTokenId);
+        (
+            uint256 amount0Principal,
+            uint256 amount1Principal,
+            uint256 amount0Fees,
+            uint256 amount1Fees
+        ) = _getUniPositionTokenBreakdown(positionInfo);
+
+        collateralValueUSD =
+            _getUSDValue(positionInfo.token0, amount0Principal) +
+            _getUSDValue(positionInfo.token1, amount1Principal);
+
+        feeValueUSD =
+            _getUSDValue(positionInfo.token0, amount0Fees) +
+            _getUSDValue(positionInfo.token1, amount1Fees);
     }
 
     function getPositionValueBreakdown(uint256 positionId)
@@ -463,22 +498,60 @@ contract OrynEngine is ReentrancyGuard, IERC721Receiver {
         returns (uint256 collateralValueUSD, uint256 feeValueUSD, uint256 totalValueUSD)
     {
         Position storage position = _getPosition(positionId);
-        (collateralValueUSD, feeValueUSD, totalValueUSD) = _getPositionValues(position);
+        return _getPositionValueDetails(position);
     }
 
     function getPositionFinancials(uint256 positionId)
         external
         view
-        returns (
-            uint256 collateralValueUSD,
-            uint256 feeValueUSD,
-            uint256 totalValueUSD,
-            uint256 debtValueUSD
-        )
+        returns (uint256 collateralValueUSD, uint256 feeValueUSD, uint256 totalValueUSD, uint256 debtValueUSD)
     {
         Position storage position = _getPosition(positionId);
-        (collateralValueUSD, feeValueUSD, totalValueUSD) = _getPositionValues(position);
+        (collateralValueUSD, feeValueUSD, totalValueUSD) = _getPositionValueDetails(position);
         debtValueUSD = position.debt;
+    }
+
+    function getUserPositionDetails(address user) external view returns (PositionDetails[] memory details) {
+        uint256[] memory positionIds = s_userPositions[user];
+        uint256 length = positionIds.length;
+        details = new PositionDetails[](length);
+
+        for (uint256 i = 0; i < length; ) {
+            uint256 positionId = positionIds[i];
+            Position storage position = s_positions[positionId];
+            (
+                uint256 collateralValueUSD,
+                uint256 feeValueUSD,
+                uint256 totalValueUSD
+            ) = _getPositionValueDetails(position);
+
+            details[i] = PositionDetails({
+                positionId: positionId,
+                collateralType: position.collateralType,
+                token: position.token,
+                amount: position.amount,
+                uniTokenId: position.uniTokenId,
+                debt: position.debt,
+                collateralValueUSD: collateralValueUSD,
+                feeValueUSD: feeValueUSD,
+                totalValueUSD: totalValueUSD,
+                debtValueUSD: position.debt,
+                healthFactor: getHealthFactor(positionId)
+            });
+
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
+    function getPriceNoOlderThan(address token, uint256 maxAge) external view returns (PythStructs.Price memory) {
+        bytes32 priceFeedId = getPriceFeedId(token);
+        PythStructs.Price memory priceData = i_pyth.getPriceNoOlderThan(priceFeedId, maxAge);
+        if (priceData.price <= 0) {
+            revert OrynEngine__InvalidPrice();
+        }
+        return priceData;
     }
 
     function getHealthFactor(uint256 positionId) public view returns (uint256) {
@@ -506,37 +579,6 @@ contract OrynEngine is ReentrancyGuard, IERC721Receiver {
         amount = position.amount;
         uniTokenId = position.uniTokenId;
         debt = position.debt;
-    }
-
-    function getUserPositionDetails(address user) external view returns (PositionDetails[] memory details) {
-        uint256[] memory positionIds = s_userPositions[user];
-        uint256 length = positionIds.length;
-        details = new PositionDetails[](length);
-        for (uint256 i = 0; i < length; ) {
-            uint256 positionId = positionIds[i];
-            Position storage position = s_positions[positionId];
-            (
-                uint256 collateralValueUSD,
-                uint256 feeValueUSD,
-                uint256 totalValueUSD
-            ) = _getPositionValues(position);
-            details[i] = PositionDetails({
-                positionId: positionId,
-                collateralType: position.collateralType,
-                token: position.token,
-                amount: position.amount,
-                uniTokenId: position.uniTokenId,
-                debt: position.debt,
-                collateralValueUSD: collateralValueUSD,
-                feeValueUSD: feeValueUSD,
-                totalValueUSD: totalValueUSD,
-                debtValueUSD: position.debt,
-                healthFactor: _calculateHealthFactor(totalValueUSD, position.debt)
-            });
-            unchecked {
-                ++i;
-            }
-        }
     }
 
     function getUserPositions(address user) external view returns (uint256[] memory) {
@@ -609,39 +651,6 @@ contract OrynEngine is ReentrancyGuard, IERC721Receiver {
             revert OrynEngine__InValidIndex();
         }
         return s_CollateralTokens[index];
-    }
-
-    function getUniPositionValueUSD(uint256 tokenId) public view returns (uint256) {
-        UniPositionInfo memory positionInfo = _getUniPositionInfo(tokenId);
-        return _getUniPositionValueUSD(positionInfo);
-    }
-
-    function getUniPositionValueBreakdown(uint256 positionId)
-        external
-        view
-        returns (uint256 collateralValueUSD, uint256 feeValueUSD)
-    {
-        Position storage position = _getPosition(positionId);
-        if (position.collateralType != CollateralType.UNI_V3) {
-            revert OrynEngine__PositionNotUni(positionId);
-        }
-        (collateralValueUSD, feeValueUSD, ) = _getPositionValues(position);
-    }
-
-    function getLatestPythPrice(address token) public view returns (PythStructs.Price memory) {
-        bytes32 priceFeedId = s_priceFeeds[token];
-        if (priceFeedId == bytes32(0)) {
-            revert OrynEngine__TokenNotAllowed(token);
-        }
-
-        try i_pyth.getPriceNoOlderThan(priceFeedId, PYTH_PRICE_AGE_THRESHOLD) returns (PythStructs.Price memory priceData) {
-            if (priceData.price <= 0) {
-                revert OrynEngine__StalePrice();
-            }
-            return priceData;
-        } catch {
-            revert OrynEngine__StalePrice();
-        }
     }
 
     function onERC721Received(
@@ -723,11 +732,36 @@ contract OrynEngine is ReentrancyGuard, IERC721Receiver {
     }
 
     function _positionValueUSD(Position storage position) internal view returns (uint256) {
+        (, , uint256 totalValueUSD) = _getPositionValueDetails(position);
+        return totalValueUSD;
+    }
+
+    function _getPositionValueDetails(Position storage position)
+        internal
+        view
+        returns (uint256 collateralValueUSD, uint256 feeValueUSD, uint256 totalValueUSD)
+    {
         if (position.collateralType == CollateralType.ERC20) {
-            return getUSDValue(position.token, position.amount);
+            collateralValueUSD = _getUSDValue(position.token, position.amount);
+            totalValueUSD = collateralValueUSD;
         } else {
             UniPositionInfo memory info = _getUniPositionInfo(position.uniTokenId);
-            return _getUniPositionValueUSD(info);
+            (
+                uint256 amount0Principal,
+                uint256 amount1Principal,
+                uint256 amount0Fees,
+                uint256 amount1Fees
+            ) = _getUniPositionTokenBreakdown(info);
+
+            collateralValueUSD =
+                _getUSDValue(info.token0, amount0Principal) +
+                _getUSDValue(info.token1, amount1Principal);
+
+            feeValueUSD =
+                _getUSDValue(info.token0, amount0Fees) +
+                _getUSDValue(info.token1, amount1Fees);
+
+            totalValueUSD = collateralValueUSD + feeValueUSD;
         }
     }
 
@@ -739,39 +773,10 @@ contract OrynEngine is ReentrancyGuard, IERC721Receiver {
             uint256 amount1Fees
         ) = _getUniPositionTokenBreakdown(positionInfo);
 
-        uint256 value0 = getUSDValue(positionInfo.token0, amount0Principal + amount0Fees);
-        uint256 value1 = getUSDValue(positionInfo.token1, amount1Principal + amount1Fees);
+        uint256 value0 = _getUSDValue(positionInfo.token0, amount0Principal + amount0Fees);
+        uint256 value1 = _getUSDValue(positionInfo.token1, amount1Principal + amount1Fees);
 
         return value0 + value1;
-    }
-
-    function _getPositionValues(Position storage position)
-        internal
-        view
-        returns (uint256 collateralValueUSD, uint256 feeValueUSD, uint256 totalValueUSD)
-    {
-        if (position.collateralType == CollateralType.ERC20) {
-            collateralValueUSD = getUSDValue(position.token, position.amount);
-            feeValueUSD = 0;
-            totalValueUSD = collateralValueUSD;
-        } else {
-            UniPositionInfo memory positionInfo = _getUniPositionInfo(position.uniTokenId);
-            (
-                uint256 amount0Principal,
-                uint256 amount1Principal,
-                uint256 amount0Fees,
-                uint256 amount1Fees
-            ) = _getUniPositionTokenBreakdown(positionInfo);
-
-            uint256 principal0USD = getUSDValue(positionInfo.token0, amount0Principal);
-            uint256 principal1USD = getUSDValue(positionInfo.token1, amount1Principal);
-            uint256 fees0USD = getUSDValue(positionInfo.token0, amount0Fees);
-            uint256 fees1USD = getUSDValue(positionInfo.token1, amount1Fees);
-
-            collateralValueUSD = principal0USD + principal1USD;
-            feeValueUSD = fees0USD + fees1USD;
-            totalValueUSD = collateralValueUSD + feeValueUSD;
-        }
     }
 
     function _getUniPositionTokenBreakdown(UniPositionInfo memory positionInfo)
@@ -784,35 +789,48 @@ contract OrynEngine is ReentrancyGuard, IERC721Receiver {
             uint256 amount1Fees
         )
     {
-        address factory = i_positionManager.factory();
-        address poolAddress = IUniswapV3FactoryMinimal(factory).getPool(
-            positionInfo.token0,
-            positionInfo.token1,
-            positionInfo.fee
-        );
-        if (poolAddress == address(0)) {
-            revert OrynEngine__UninitializedPool();
+        // Calculate principal amounts if position has liquidity
+        if (positionInfo.liquidity > 0) {
+            // Get pool address
+            address factory = i_positionManager.factory();
+            address poolAddress = IUniswapV3FactoryMinimal(factory).getPool(
+                positionInfo.token0,
+                positionInfo.token1,
+                positionInfo.fee
+            );
+            if (poolAddress == address(0)) {
+                revert OrynEngine__UninitializedPool();
+            }
+
+            // Get current pool price
+            uint160 sqrtPriceX96;
+            try IUniswapV3PoolMinimal(poolAddress).slot0() returns (
+                uint160 fetchedSqrtPriceX96,
+                int24,
+                uint16,
+                uint16,
+                uint16,
+                uint8,
+                bool
+            ) {
+                if (fetchedSqrtPriceX96 == 0) {
+                    revert OrynEngine__UninitializedPool();
+                }
+                sqrtPriceX96 = fetchedSqrtPriceX96;
+            } catch {
+                revert OrynEngine__UninitializedPool();
+            }
+
+            // Calculate principal amounts - library handles all tick math internally
+            (amount0Principal, amount1Principal) = LiquidityAmounts.getAmountsForLiquidity(
+                sqrtPriceX96,
+                TickMath.getSqrtRatioAtTick(positionInfo.tickLower),
+                TickMath.getSqrtRatioAtTick(positionInfo.tickUpper),
+                positionInfo.liquidity
+            );
         }
 
-        (
-            uint160 sqrtPriceX96,
-            ,
-            ,
-            ,
-            ,
-            ,
-        ) = IUniswapV3PoolMinimal(poolAddress).slot0();
-
-        uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(positionInfo.tickLower);
-        uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(positionInfo.tickUpper);
-
-        (amount0Principal, amount1Principal) = LiquidityAmounts.getAmountsForLiquidity(
-            sqrtPriceX96,
-            sqrtRatioAX96,
-            sqrtRatioBX96,
-            positionInfo.liquidity
-        );
-
+        // Fee amounts are directly available from position
         amount0Fees = uint256(positionInfo.tokensOwed0);
         amount1Fees = uint256(positionInfo.tokensOwed1);
     }
@@ -823,16 +841,60 @@ contract OrynEngine is ReentrancyGuard, IERC721Receiver {
         }
     }
 
+    function _getTokenAmountFromUSD(address token, uint256 USDAmountInWei) internal view returns (uint256) {
+        uint256 price = _getNormalizedPrice(token);
+        uint256 amountIn18 = (USDAmountInWei * PRECISION) / price;
+        return _from18Decimals(token, amountIn18);
+    }
+
+    function _getUSDValue(address token, uint256 amount) internal view returns (uint256) {
+        uint256 price = _getNormalizedPrice(token);
+        uint256 amountIn18 = _to18Decimals(token, amount);
+        return (price * amountIn18) / PRECISION;
+    }
+
+    function _fetchLatestPythPrice(address token) internal view returns (PythStructs.Price memory priceData) {
+        bytes32 priceFeedId = s_priceFeeds[token];
+        if (priceFeedId == bytes32(0)) {
+            revert OrynEngine__TokenNotAllowed(token);
+        }
+
+        try i_pyth.getPriceNoOlderThan(priceFeedId, PYTH_PRICE_AGE_THRESHOLD) returns (PythStructs.Price memory fetched) {
+            if (fetched.price <= 0) {
+                revert OrynEngine__InvalidPrice();
+            }
+            return fetched;
+        } catch {
+            revert OrynEngine__StalePrice();
+        }
+    }
+
     function _getNormalizedPrice(address token) internal view returns (uint256) {
-        PythStructs.Price memory price = getLatestPythPrice(token);
-        uint256 basePrice = uint256(uint64(price.price));
+        PythStructs.Price memory priceData = _fetchLatestPythPrice(token);
+        return _normalizePrice(priceData);
+    }
+
+    function _normalizePrice(PythStructs.Price memory price) internal pure returns (uint256) {
+        int64 rawPrice = price.price;
+        if (rawPrice <= 0) {
+            revert OrynEngine__InvalidPrice();
+        }
+
+        uint256 basePrice = uint256(uint64(rawPrice));
         int256 exponent = int256(price.expo) + 18;
 
         if (exponent >= 0) {
-            return basePrice * (10 ** uint256(exponent));
+            return basePrice * _pow10(uint256(exponent));
         } else {
-            return basePrice / (10 ** uint256(-exponent));
+            return basePrice / _pow10(uint256(-exponent));
         }
+    }
+
+    function _pow10(uint256 exponent) internal pure returns (uint256) {
+        if (exponent > 59) {
+            revert OrynEngine__InvalidPrice();
+        }
+        return 10 ** exponent;
     }
 
     function _to18Decimals(address token, uint256 amount) internal view returns (uint256) {
@@ -863,5 +925,9 @@ contract OrynEngine is ReentrancyGuard, IERC721Receiver {
         }
         uint256 collateralAdjustedForThreshold = (collateralUSD * LIQUIDATION_TRESHOLD) / LIQUIDATION_PRECISION;
         return (collateralAdjustedForThreshold * PRECISION) / debt;
+    }
+
+    function getOwnerOfToken(uint256 tokenId) external view returns (address) {
+        return i_positionManager.ownerOf(tokenId);
     }
 }
