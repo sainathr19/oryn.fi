@@ -2,7 +2,7 @@ import { Layout } from "./components/Layout";
 import { Dashboard } from "./pages/dashboard";
 import { Borrow } from "./pages/borrow";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { WalletProvider } from "./components/providers/WalletProvider";
+import { WalletProvider } from "./providers/WalletProvider";
 
 function App() {
   return (

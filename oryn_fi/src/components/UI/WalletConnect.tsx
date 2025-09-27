@@ -1,7 +1,7 @@
 import React, { useRef } from 'react'
 import { Button } from './Button'
 import { useAccount } from 'wagmi'
-import { appKit } from '../providers/WalletProvider'
+import { appKit } from '../../providers/WalletProvider'
 
 interface WalletConnectButtonProps {
     className?: string
