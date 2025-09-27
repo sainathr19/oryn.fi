@@ -43,7 +43,7 @@ export const Dashboard = () => {
   const [selectedPosition, setSelectedPosition] =
     useState<PositionDetails | null>(null);
   const [mintAmount, setMintAmount] = useState<string>("");
-  const [repayAmount, setRepayAmount] = useState<string>("");
+  const [repayAmount, setRepayAmount] = useState<bigint>(BigInt(0));
   const [mintSuccess, setMintSuccess] = useState(false);
   const [repaySuccess, setRepaySuccess] = useState(false);
 
@@ -99,16 +99,15 @@ export const Dashboard = () => {
   };
 
   const handleRepay = async () => {
-    if (!selectedPosition || !repayAmount) return;
+    if (!selectedPosition || repayAmount === BigInt(0)) return;
 
     try {
       setRepaySuccess(false);
-      const amount = BigInt(parseFloat(repayAmount) * Math.pow(10, 18)); // OrynUSD has 18 decimals
-
-      const result = await burnOrynUSD(Number(selectedPosition.positionId), amount);
+      // repayAmount is already converted to 18 decimals by BorrowInput component
+      const result = await burnOrynUSD(Number(selectedPosition.positionId), repayAmount);
       console.log("Repay completed:", result);
       setRepaySuccess(true);
-      setRepayAmount("");
+      setRepayAmount(BigInt(0));
     } catch (error) {
       console.error("Failed to repay:", error);
     }
@@ -387,8 +386,16 @@ export const Dashboard = () => {
                           </label>
                           <input
                             type="number"
-                            value={repayAmount}
-                            onChange={(e) => setRepayAmount(e.target.value)}
+                            value={repayAmount === BigInt(0) ? "" : (Number(repayAmount) / Math.pow(10, 18)).toString()}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              if (value === "") {
+                                setRepayAmount(BigInt(0));
+                              } else {
+                                const amount = BigInt(parseFloat(value) * Math.pow(10, 18));
+                                setRepayAmount(amount);
+                              }
+                            }}
                             placeholder="0.00"
                             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
                             max={convertBigIntToUSD(
@@ -406,8 +413,7 @@ export const Dashboard = () => {
                           onClick={handleRepay}
                           disabled={
                             isRepaying ||
-                            !repayAmount ||
-                            parseFloat(repayAmount) <= 0
+                            repayAmount === BigInt(0)
                           }
                           className="w-full"
                         >

@@ -8,7 +8,7 @@ import { validateBorrowAmount } from "../../utils/borrowCalculations";
 type BorrowInputType = {
   type: IOType;
   maxValue?: number;
-  onAmountChange?: (amount: number) => void;
+  onAmountChange?: (amount: bigint) => void;
   onValidationChange?: (isValid: boolean, error?: string) => void;
 };
 
@@ -83,7 +83,9 @@ export const BorrowInput: FC<BorrowInputType> = ({
       onValidationChange?.(true);
     }
     
-    onAmountChange?.(numericAmount);
+    // Convert to 18 decimals for blockchain operations
+    const amountWithDecimals = BigInt(numericAmount * Math.pow(10, 18));
+    onAmountChange?.(amountWithDecimals);
   };
 
   useEffect(() => {
