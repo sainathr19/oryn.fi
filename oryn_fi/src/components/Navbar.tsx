@@ -13,7 +13,7 @@ const Navbar = () => {
   };
 
   return (
-    <nav className="z-50 fixed top-0 w-full px-6">
+    <nav className="z-50 fixed top-0 w-full px-6 bg-white/5 backdrop-blur-lg">
       <div className="max-w-7xl flex items-center justify-between py-5 mx-auto">
         <a href="/">
           <div className="flex items-center justify-start gap-3">
@@ -30,7 +30,12 @@ const Navbar = () => {
               <a href="/borrow">Dashboard</a>
             </li>
           </ul>
-          {location.pathname === "/borrow" ? <WalletConnectButton /> : <Button onClick={handleLaunchApp}>Launch App</Button>}        </div>
+          {location.pathname === "/borrow" ? (
+            <WalletConnectButton />
+          ) : (
+            <Button onClick={handleLaunchApp}>Launch App</Button>
+          )}{" "}
+        </div>
       </div>
     </nav>
   );

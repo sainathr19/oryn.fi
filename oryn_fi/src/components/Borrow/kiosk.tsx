@@ -3,6 +3,7 @@ import { IOType } from "../../constants/constants";
 import { Button } from "../UI/Button";
 import { InfoIcon } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../UI/tooltip";
+import { useAccount } from "wagmi";
 import { useNFT } from "../../hooks/useNFT";
 
 const healthFactor = 1.8;
@@ -15,9 +16,11 @@ const getHealthFactorColor = (hf: number) => {
 };
 
 export const Kiosk = () => {
-  const { nftContracts, isLoading, error, fetchNfts } = useNFT();
-  console.log("nftContracts", nftContracts)
-  return (
+  const { nftContracts } = useNFT();
+  console.log("nftContracts", nftContracts);
+  const { address } = useAccount();
+
+  return address ? (
     <div className="flex flex-col gap-3 px-2 pb-3 pt-2 sm:px-3 sm:pb-4 sm:pt-3 w-full text-dark-grey">
       <h4 className="text-sm font-medium sticky inset-0">
         Selected NFT Details
@@ -191,6 +194,10 @@ export const Kiosk = () => {
       <Button size="lg" className="w-full">
         Borrow
       </Button>
+    </div>
+  ) : (
+    <div className="flex items-center justify-center w-full h-full rounded-2xl text-dark-grey">
+      Please connect and select a NFT to Borrow
     </div>
   );
 };

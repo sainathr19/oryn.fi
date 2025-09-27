@@ -4,6 +4,15 @@ import clsx from "clsx";
 import NumberFlow from "@number-flow/react";
 import { TokenInfo } from "../UI/TokenInfo";
 import { ChevronDown } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../UI/dialog";
+import { SelectToken } from "../UI/SelectToken";
 
 type BorrowInputType = {
   type: IOType;
@@ -16,11 +25,9 @@ export const BorrowInput: FC<BorrowInputType> = ({ type }) => {
     symbol: "OUSDC",
     logo: "https://garden.imgix.net/ethglobal/OrynUSDC.svg",
     network: {
+      networkName: "Oryn",
       networkLogo: "https://garden.imgix.net/ethglobal/OrynChain.svg",
     },
-  };
-  const network = {
-    networkLogo: "https://garden.imgix.net/ethglobal/OrynChain.svg",
   };
 
   const [amount, setAmount] = useState("");
@@ -83,7 +90,7 @@ export const BorrowInput: FC<BorrowInputType> = ({ type }) => {
 
   return (
     <>
-      <div className="flex flex-col gap-2 rounded-2xl bg-white/75 w-full p-4 text-dark-grey">
+      <div className="flex flex-col gap-2 rounded-2xl bg-white/75 w-full p-4 pb-5 text-dark-grey">
         <div className="flex justify-between">
           <div className="flex gap-3">
             <h4 className="text-sm font-medium">{label}</h4>
@@ -158,22 +165,39 @@ export const BorrowInput: FC<BorrowInputType> = ({ type }) => {
               </div>
             </div>
           </span>
-          {asset ? (
-            <TokenInfo
-              symbol={asset.symbol}
-              tokenLogo={asset.logo || ""}
-              chainLogo={network?.networkLogo}
-              onClick={() => {}}
-            />
-          ) : (
-            <div
-              className="flex cursor-pointer items-center gap-1"
-              onClick={() => {}}
-            >
-              <span>Select token</span>
-              <ChevronDown className="w-5" />
-            </div>
-          )}
+          <Dialog>
+            <DialogTrigger>
+              {asset ? (
+                <TokenInfo
+                  symbol={asset.symbol}
+                  tokenLogo={asset.logo || ""}
+                  chainLogo={asset.network?.networkLogo}
+                  onClick={() => {}}
+                />
+              ) : (
+                <div
+                  className="flex cursor-pointer items-center gap-1"
+                  onClick={() => {}}
+                >
+                  <span>Select token</span>
+                  <ChevronDown className="w-5" />
+                </div>
+              )}
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Select a token?</DialogTitle>
+                <DialogDescription>
+                  <div className="items-center justify-center gap-3 pt-4 grid grid-cols-2">
+                    <SelectToken asset={asset} />
+                    <SelectToken asset={asset} />
+                    <SelectToken asset={asset} />
+                    <SelectToken asset={asset} />
+                  </div>
+                </DialogDescription>
+              </DialogHeader>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
     </>
