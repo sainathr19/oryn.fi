@@ -1,7 +1,7 @@
 import { ethers } from 'ethers';
 import { OracleManager } from './oracle-manager';
 import { ChainConfig } from '../types';
-import { oracleAbi } from '../../abi/oracle';
+import { oracleAbi } from '../abi/oracle';
 
 /**
  * Chain-specific Oracle Manager wrapper with logging
