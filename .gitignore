@@ -1,2 +1,4 @@
 .DS_Store
 oryn_fi/.env*
+pyth-oracle/.env*
+pyth-oracle/target/
