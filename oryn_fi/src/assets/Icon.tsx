@@ -24,8 +24,8 @@ export const Icon = (props: SvgProps) => {
           y2="112.444"
           gradientUnits="userSpaceOnUse"
         >
-          <stop stop-color={props.isWhite ? "#fff" : "#662CDD"} />
-          <stop offset="1" stop-color={props.isWhite ? "#fff" : "#9163EF"} />
+          <stop stopColor={props.isWhite ? "#fff" : "#662CDD"} />
+          <stop offset="1" stopColor={props.isWhite ? "#fff" : "#9163EF"} />
         </linearGradient>
       </defs>
     </svg>
