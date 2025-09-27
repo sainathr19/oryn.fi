@@ -32,7 +32,7 @@ const Navbar = () => {
             </li>
             <li>
               <button
-                onClick={() => navigate("/")}
+                onClick={() => navigate("/dashboard")}
                 className={`hover:text-purple-600 transition-colors ${
                   location.pathname === "/"
                     ? "text-purple-600 font-semibold"
