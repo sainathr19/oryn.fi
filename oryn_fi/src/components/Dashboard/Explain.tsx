@@ -1,7 +1,7 @@
 export const Explain = () => {
   return (
     <section className="max-w-7xl mx-auto font-golos flex flex-col items-center justify-between gap-16 py-36">
-      <h2 className="text-3xl text-dark-grey font-medium leading-[140%] tracking-tight">
+      <h2 className="text-3xl text-dark-grey font-regular leading-[140%] tracking-tight">
         Traditional CDPs use fungible assets like ETH or stablecoins as
         collateral. But Uniswap V3 introduced concentrated liquidity positions
         represented as NFTs, leaving billions in idle, locked liquidity that
