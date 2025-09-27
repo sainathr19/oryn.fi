@@ -83,7 +83,7 @@ export const BorrowInput: FC<BorrowInputType> = ({ type }) => {
 
   return (
     <>
-      <div className="flex flex-col gap-2 rounded-2xl bg-white/50 w-full p-4 text-dark-grey">
+      <div className="flex flex-col gap-2 rounded-2xl bg-white/75 w-full p-4 text-dark-grey">
         <div className="flex justify-between">
           <div className="flex gap-3">
             <h4 className="text-sm font-medium">{label}</h4>
