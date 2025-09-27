@@ -1,4 +1,5 @@
 import { Kiosk } from "../components/Borrow/kiosk";
+import { ListNFTs } from "../components/Borrow/ListNFTs";
 
 export const Borrow = () => {
   return (
@@ -15,8 +16,13 @@ export const Borrow = () => {
         alt="background"
         className="w-screen absolute inset-0 h-screen object-cover"
       />
-      <div className="absolute inset-0 w-screen text-white min-h-screen flex items-center justify-center">
-        <Kiosk />
+      <div className="absolute grid grid-cols-[2fr_3fr] max-w-7xl gap-6 px-6 mx-auto items-center justify-center inset-0 w-screen text-white my-auto">
+        <div className="flex flex-col items-center h-full max-h-[75%] w-full bg-primary/5 z-40 backdrop-blur-lg rounded-2xl border border-white/50 p-1">
+          <ListNFTs />
+        </div>
+        <div className="flex flex-col items-center h-full max-h-[75%] w-full bg-primary/5 z-40 backdrop-blur-lg rounded-2xl border border-white/50 p-1">
+          <Kiosk />
+        </div>
       </div>
     </div>
   );
