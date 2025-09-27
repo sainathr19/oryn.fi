@@ -83,31 +83,15 @@ export const Kiosk = () => {
                     <div className="text-red-500 text-sm">
                       Error: {contract.error.message}
                     </div>
-                  ) : contract.nfts.length > 0 ? (
+                  ) : contract.tokenIds.length > 0 ? (
                     <div className="grid grid-cols-2 gap-2">
-                      {contract.nfts.map((nft) => (
-                        <div key={`${nft.contractAddress}-${nft.tokenId}`} 
-                             className="border rounded p-2 bg-gray-50 hover:bg-gray-100 cursor-pointer transition-colors">
-                          <div className="text-xs font-medium text-gray-800">
-                            #{nft.tokenId}
-                          </div>
-                          {nft.metadata?.name && (
-                            <div className="text-xs text-gray-600 truncate">
-                              {nft.metadata.name}
-                            </div>
-                          )}
-                          {nft.metadata?.image && (
-                            <img 
-                              src={nft.metadata.image} 
-                              alt={`NFT #${nft.tokenId}`}
-                              className="w-full h-16 object-cover rounded mt-1"
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).style.display = 'none';
-                              }}
-                            />
-                          )}
+                     {contract.tokenIds.map((tokenId) => (
+                      <div key={tokenId} className="border rounded-lg p-3">
+                        <div className="text-sm font-medium text-gray-700">
+                          Token ID: {tokenId}
                         </div>
-                      ))}
+                      </div>
+                     ))}
                     </div>
                   ) : (
                     <div className="text-center py-2 text-gray-500 text-sm">

@@ -4,30 +4,15 @@ import { erc721Abi } from 'viem';
 import { readContract } from 'viem/actions';
 
 // Types for NFT data
-export interface NFTMetadata {
-  name?: string;
-  description?: string;
-  image?: string;
-  attributes?: Array<{
-    trait_type: string;
-    value: string | number;
-  }>;
-  [key: string]: any;
-}
-
 export interface NFT {
   contractAddress: string;
   tokenId: string;
-  tokenURI?: string;
-  metadata: NFTMetadata | null;
-  name?: string;
-  symbol?: string;
 }
 
 export interface NFTContract {
   address: string;
   balance: bigint;
-  nfts: NFT[];
+  tokenIds: string[];
   isLoading: boolean;
   error?: Error;
 }
@@ -37,7 +22,6 @@ export interface UseNFTReturn {
   isLoading: boolean;
   error: Error | null;
   fetchNfts: () => void;
-  fetchMetadata: (tokenURI: string) => Promise<NFTMetadata | null>;
   refetch: () => void;
 }
 
@@ -57,101 +41,100 @@ export const useNFT = (): UseNFTReturn => {
   const hasLoggedRef = useRef(false);
   const lastAddressRef = useRef<string | null>(null);
 
-  // console.log("Ada", walletClient)
-
-  // Fetch metadata from tokenURI
-  const fetchMetadata = async (tokenURI: string): Promise<NFTMetadata | null> => {
-    try {
-      // Handle IPFS URLs
-      const url = tokenURI.startsWith('ipfs://') 
-        ? `https://ipfs.io/ipfs/${tokenURI.slice(7)}`
-        : tokenURI;
-      
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch metadata: ${response.statusText}`);
-      }
-      
-      return await response.json();
-    } catch (err) {
-      console.error('Error fetching NFT metadata:', err);
-      return null;
-    }
+const fetchNFTData = useCallback(async (contractAddress: string): Promise<NFTContract> => {
+  const contract: NFTContract = {
+    address: contractAddress,
+    balance: 0n,
+    tokenIds: [],
+    isLoading: true,
   };
 
-  // This function will be used to fetch individual NFT details when needed
-  // For now, we'll focus on getting the balance first
+  try {
+    if (!walletClient || !address) throw new Error("No wallet client or address");
 
-  // Fetch NFT balance using direct contract call
-  const fetchNFTBalance = useCallback(async (contractAddress: string): Promise<NFTContract> => {
-    const contract: NFTContract = {
-      address: contractAddress,
-      balance: 0n,
-      nfts: [],
-      isLoading: true,
-    };
+    // 1. Get balance
+    const balance = await readContract(walletClient, {
+      address: contractAddress as `0x${string}`,
+      abi: erc721Abi,
+      functionName: "balanceOf",
+      args: [address],
+    });
+    contract.balance = balance as bigint;
 
-    try {
-      if (!walletClient) {
-        throw new Error('No wallet client available');
+    // 2. Try enumerable first
+    const ids: string[] = [];
+    for (let i = 0n; i < contract.balance; i++) {
+      try {
+        const tokenId = await readContract(walletClient, {
+          address: contractAddress as `0x${string}`,
+          abi: [
+            ...erc721Abi,
+            {
+              type: "function",
+              name: "tokenOfOwnerByIndex",
+              stateMutability: "view",
+              inputs: [
+                { name: "owner", type: "address" },
+                { name: "index", type: "uint256" },
+              ],
+              outputs: [{ name: "tokenId", type: "uint256" }],
+            },
+          ],
+          functionName: "tokenOfOwnerByIndex",
+          args: [address, i],
+        });
+        ids.push((tokenId as bigint).toString());
+      } catch {
+        // enumerable not supported → fallback
       }
-
-      const balance = await readContract(walletClient, {
-        address: contractAddress as `0x${string}`,
-        abi: erc721Abi,
-        functionName: 'balanceOf',
-        args: [address!],
-      });
-
-      contract.balance = balance as bigint;
-      contract.isLoading = false;
-
-      return contract;
-    } catch (err) {
-      contract.isLoading = false;
-      contract.error = err as Error;
-      return contract;
     }
-  }, [address, walletClient]);
 
-  // Process NFT contracts when shouldFetch is true
+    // 3. If no IDs, fallback to scanning Transfer events (requires viem getLogs)
+    if (ids.length === 0 && contract.balance > 0n) {
+      console.warn("Enumerable not supported. Need to fetch from Transfer logs or contract-specific function.");
+      // Option A: use getLogs with topic filter Transfer(address, address, tokenId)
+      // Option B: call positions(tokenId) if ABI supports it
+    }
+
+    contract.tokenIds = ids;
+    contract.isLoading = false;
+    return contract;
+  } catch (err) {
+    contract.isLoading = false;
+    contract.error = err as Error;
+    return contract;
+  }
+}, [address, walletClient]);
+
+
+  // Process NFT contracts
   useEffect(() => {
-    if (!shouldFetch || !isConnected || !address || !walletClient) {
-      return;
-    }
+    if (!shouldFetch || !isConnected || !address || !walletClient) return;
 
-    // Reset logging flag if address changed
     if (lastAddressRef.current !== address) {
       hasLoggedRef.current = false;
       lastAddressRef.current = address;
     }
-
-    // Don't process if we already logged for this address
-    if (hasLoggedRef.current) {
-      return;
-    }
+    if (hasLoggedRef.current) return;
 
     const fetchAllNFTs = async () => {
       setIsLoading(true);
       const contracts: NFTContract[] = [];
 
-      // Fetch NFTs from each contract
       for (const contractAddress of NFT_CONTRACTS) {
-        const contract = await fetchNFTBalance(contractAddress);
+        const contract = await fetchNFTData(contractAddress);
         contracts.push(contract);
       }
 
       setNftContracts(contracts);
       setIsLoading(false);
-      hasLoggedRef.current = true; // Mark as logged
-      
-      // Log summary only once when data is complete
-      const totalNFTs = contracts.reduce((sum, contract) => sum + Number(contract.balance), 0);
-      console.log(`✅ Found ${totalNFTs} NFTs from ${contracts.length} contracts`);
-      
+      hasLoggedRef.current = true;
+
+      // Log results
       contracts.forEach(contract => {
         if (contract.balance > 0n) {
           console.log(`📦 Contract ${contract.address}: ${contract.balance.toString()} NFTs`);
+          console.log(`🆔 Token IDs:`, contract.tokenIds);
         } else if (contract.error) {
           console.log(`❌ Contract ${contract.address}: ${contract.error.message}`);
         }
@@ -159,26 +142,24 @@ export const useNFT = (): UseNFTReturn => {
     };
 
     fetchAllNFTs();
-  }, [shouldFetch, isConnected, address, walletClient, fetchNFTBalance]);
+  }, [shouldFetch, isConnected, address, walletClient, fetchNFTData]);
 
-  // Main fetch function
+  // Main fetch trigger
   const fetchNfts = useCallback(() => {
     if (!isConnected || !address) {
       console.log('Wallet not connected');
       return;
     }
-
     console.log('Fetching NFTs for address:', address);
-    hasLoggedRef.current = false; // Reset logging flag for new fetch
+    hasLoggedRef.current = false;
     setShouldFetch(true);
   }, [isConnected, address]);
 
-  // Refetch function
   const refetch = useCallback(() => {
     fetchNfts();
   }, [fetchNfts]);
 
-  // Auto-fetch NFTs when wallet connects
+  // Auto-fetch when connected
   useEffect(() => {
     if (isConnected && address) {
       fetchNfts();
@@ -189,7 +170,6 @@ export const useNFT = (): UseNFTReturn => {
     nftContracts,
     isLoading,
     error,
-    fetchMetadata, 
     fetchNfts,
     refetch,
   };
