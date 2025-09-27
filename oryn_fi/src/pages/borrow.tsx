@@ -104,20 +104,6 @@ export const Borrow = () => {
           };
         });
       setPositions(validPositions);
-
-      if (selectedPosition) {
-        const updatedPosition = validPositions.find(
-          (pos) =>
-            Number(pos.positionId) === Number(selectedPosition.positionId)
-        );
-        if (updatedPosition) {
-          setSelectedPosition(updatedPosition);
-          console.log(
-            "Selected position updated with fresh data:",
-            updatedPosition
-          );
-        }
-      }
     } else {
       setPositions([]);
     }
