@@ -1,13 +1,14 @@
 import express from 'express';
+import { loadConfig } from './config';
 
+const config = loadConfig();
 const app = express();
-const PORT = process.env.PORT || 3000;
 
 // Health endpoint
 app.get('/health', (req, res) => {
   res.send('Online');
 });
 
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+app.listen(config.port, () => {
+  console.log(`Server is running on port ${config.port}`);
 });
