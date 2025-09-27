@@ -1,3 +1,4 @@
+import { useLocation, useNavigate } from "react-router-dom";
 import { Icon } from "../assets/Icon";
 import { Typo } from "../assets/Typo";
 import { WalletConnectButton } from "./UI/WalletConnect";
