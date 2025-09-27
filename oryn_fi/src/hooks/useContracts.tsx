@@ -3,8 +3,8 @@ import { contractAddresses } from "../constants/constants";
 import { ORYN_V3_ABI } from "../constants/abi/OrynV3";
 import { POSITION_MANAGET_ABI } from "../constants/abi/PositionManager";
 import { useAccount, useWalletClient } from "wagmi";
-import { getContract, type Client } from "viem";
-import { waitForTransactionReceipt } from "viem/actions";
+import { erc20Abi, getContract, type Client } from "viem";
+import { waitForTransactionReceipt, writeContract } from "viem/actions";
 
 export const useContracts = () => {
   const { address } = useAccount();
@@ -31,6 +31,8 @@ export const useContracts = () => {
       client: walletClient as Client,
     });
   }, [walletClient]);
+
+  const [orynUSDContractAddress, setOrynUSDContractAddress] = useState<`0x${string}` | null>(null);
 
   const [userPositions, setUserPositions] = useState<any>(null);
   const [userTokenIds, setUserTokenIds] = useState<number[]>([]);
@@ -59,6 +61,11 @@ export const useContracts = () => {
   const [lastMintTxHash, setLastMintTxHash] = useState<string | null>(null);
   const [lastRepayTxHash, setLastRepayTxHash] = useState<string | null>(null);
   const [lastRedeemTxHash, setLastRedeemTxHash] = useState<string | null>(null);
+  
+  // Transaction state for token approval
+  const [isApprovingToken, setIsApprovingToken] = useState(false);
+  const [tokenApprovalError, setTokenApprovalError] = useState<Error | null>(null);
+  const [lastTokenApprovalTxHash, setLastTokenApprovalTxHash] = useState<string | null>(null);
 
   const fetchUserPositions = useCallback(async () => {
     if (!orynContract || !address) {
@@ -212,6 +219,67 @@ export const useContracts = () => {
       setIsLoadingAllDetails(false);
     }
   }, [orynContract, fetchNFTPositionDetails]);
+
+  // Function to get OrynUSD contract address
+  const getOrynUSDContractAddress = useCallback(async (): Promise<`0x${string}`> => {
+    if (!orynContract) {
+      throw new Error("Oryn contract not available");
+    }
+
+    try {
+      const address = await orynContract.read.getOrynUSDContractAddress([]) as `0x${string}`;
+      setOrynUSDContractAddress(address);
+      return address;
+    } catch (err) {
+      console.error("Failed to get OrynUSD contract address:", err);
+      throw err;
+    }
+  }, [orynContract]);
+
+  // Function to approve OrynUSD tokens
+  const approveOrynUSD = useCallback(async (): Promise<string> => {
+    if (!orynUSDContractAddress || !address || !walletClient) {
+      throw new Error("OrynUSD contract address, wallet address, or wallet client not available");
+    }
+
+    setIsApprovingToken(true);
+    setTokenApprovalError(null);
+    setLastTokenApprovalTxHash(null);
+
+    try {
+      console.log(`Approving OrynUSD tokens for Oryn contract: ${contractAddresses.ORYN_ENGINE_ADDRESS_V3}`);
+      
+      // Approve with maximum uint256 value
+      const maxUint256 = BigInt("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+      
+      const txHash = await writeContract(walletClient, {
+        abi: erc20Abi,
+        address: orynUSDContractAddress,
+        functionName: 'approve',
+        args: [contractAddresses.ORYN_ENGINE_ADDRESS_V3, maxUint256]
+      });
+      
+      console.log("Token approval transaction submitted:", txHash);
+      setLastTokenApprovalTxHash(txHash);
+      
+      // Wait for the transaction to be mined
+      const receipt = await waitForTransactionReceipt(walletClient, { hash: txHash });
+      
+      if (receipt.status === 'success') {
+        console.log("Token approval transaction confirmed:", receipt);
+        return txHash;
+      } else {
+        throw new Error("Token approval transaction failed");
+      }
+    } catch (err) {
+      const error = err as Error;
+      console.error("Failed to approve OrynUSD tokens:", error);
+      setTokenApprovalError(error);
+      throw error;
+    } finally {
+      setIsApprovingToken(false);
+    }
+  }, [orynUSDContractAddress, address, walletClient]);
 
   const approveNFT = useCallback(async (tokenId: number): Promise<string> => {
     if (!positionManagerContract || !address) {
@@ -367,8 +435,8 @@ export const useContracts = () => {
     }
   }, [orynContract, address, walletClient, fetchUserPositions]);
 
-  // Function to burn OrynUSD tokens (repay debt)
-  const burnOrynUSD = useCallback(async (positionId: number, amount: bigint): Promise<string> => {
+  // Function to burn OrynUSD tokens (repay debt) with approval
+  const burnOrynUSD = useCallback(async (positionId: number, amount: bigint): Promise<{ approvalTxHash?: string; burnTxHash: string }> => {
     if (!orynContract || !address) {
       throw new Error("Contract or address not available");
     }
@@ -378,9 +446,27 @@ export const useContracts = () => {
     setLastRepayTxHash(null);
 
     try {
-      console.log(`Repaying ${amount} OrynUSD for position ${positionId}`);
+      console.log(`Starting repay flow for ${amount} OrynUSD for position ${positionId}`);
       
-      // Call the burnOrynUSD function
+      // Step 1: Get OrynUSD contract address if not already set
+      if (!orynUSDContractAddress) {
+        console.log("Step 1: Getting OrynUSD contract address...");
+        await getOrynUSDContractAddress();
+      }
+      
+      // Step 2: Approve OrynUSD tokens
+      console.log("Step 2: Approving OrynUSD tokens...");
+      let approvalTxHash: string | undefined;
+      try {
+        approvalTxHash = await approveOrynUSD();
+        console.log("Token approval completed:", approvalTxHash);
+      } catch (approvalError) {
+        console.warn("Token approval failed or not needed:", approvalError);
+        // Continue with burn even if approval fails (might already be approved)
+      }
+      
+      // Step 3: Burn OrynUSD tokens
+      console.log("Step 3: Burning OrynUSD tokens...");
       const txHash = await orynContract.write.burnOrynUSD([BigInt(positionId), amount]);
       
       console.log("Repay transaction submitted:", txHash);
@@ -393,7 +479,7 @@ export const useContracts = () => {
         console.log("Repay transaction confirmed:", receipt);
         // Refresh user positions to get updated data
         await fetchUserPositions();
-        return txHash;
+        return { approvalTxHash, burnTxHash: txHash };
       } else {
         throw new Error("Repay transaction failed");
       }
@@ -405,7 +491,7 @@ export const useContracts = () => {
     } finally {
       setIsRepaying(false);
     }
-  }, [orynContract, address, walletClient, fetchUserPositions]);
+  }, [orynContract, address, walletClient, fetchUserPositions, orynUSDContractAddress, getOrynUSDContractAddress, approveOrynUSD]);
 
   // Function to redeem UniPosition (withdraw NFT when debt is 0)
   const redeemUniPosition = useCallback(async (positionId: number): Promise<string> => {
@@ -471,6 +557,8 @@ export const useContracts = () => {
     depositUniPosition,
     approveNFT,
     approveAndDepositNFT,
+    getOrynUSDContractAddress,
+    approveOrynUSD,
     mintOrynUSD,
     burnOrynUSD,
     redeemUniPosition,
@@ -481,6 +569,7 @@ export const useContracts = () => {
     isLoadingAllDetails,
     isDepositing,
     isApproving,
+    isApprovingToken,
     isMinting,
     isRepaying,
     isRedeeming,
@@ -488,13 +577,16 @@ export const useContracts = () => {
     error,
     depositError,
     approvalError,
+    tokenApprovalError,
     mintError,
     repayError,
     redeemError,
     lastDepositTxHash,
     lastApprovalTxHash,
+    lastTokenApprovalTxHash,
     lastMintTxHash,
     lastRepayTxHash,
-    lastRedeemTxHash
+    lastRedeemTxHash,
+    orynUSDContractAddress
   }
 };
