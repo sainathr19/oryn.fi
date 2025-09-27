@@ -6,7 +6,11 @@ const ConfigSchema = z.object({
   coingecko: z.object({
     apiUrl: z.string().default('https://api.coingecko.com/api/v3/simple/price'),
     apiKey: z.string().optional()
-  }).default({})
+  }).default({}),
+  blockchain: z.object({
+    rpcUrl: z.string(),
+    nftManagerAddress: z.string()
+  })
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
