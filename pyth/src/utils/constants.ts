@@ -18,6 +18,10 @@ export const ENV_VARS = {
 export const ORACLE_CONFIG = {
   UPDATE_INTERVAL_MS: 600000, // 10 minutes
   UPDATE_FEE_WEI: 10n, // 10 wei fee for updates
+  TRANSACTION_TIMEOUT_MS: 300000, // 5 minutes timeout for transactions
+  MAX_RETRIES: 3, // Maximum number of retries for failed operations
+  RETRY_DELAY_MS: 10000, // 10 seconds delay between retries
+  API_TIMEOUT_MS: 30000, // 30 seconds timeout for API calls
 } as const;
 
 // Pyth Network configuration
