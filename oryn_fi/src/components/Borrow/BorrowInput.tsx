@@ -20,11 +20,11 @@ export const BorrowInput: FC<BorrowInputType> = ({
 }) => {
   const label = type === IOType.collateral ? "Collateral" : "Loan Amount";
 
-  // Static OUSDC asset data
-  const ousdcAsset = {
-    symbol: "OUSDC",
+  // Static OrynUSD asset data
+  const orynUSDAsset = {
+    symbol: "OrynUSD",
     logo: "https://garden.imgix.net/ethglobal/OrynUSDC.svg",
-    decimals: 6
+    decimals: 18
   };
 
   const [amount, setAmount] = useState("");
@@ -65,9 +65,9 @@ export const BorrowInput: FC<BorrowInputType> = ({
       return;
     }
 
-    // Limit decimal places to 6 (OUSDC decimals)
-    if (parts.length === 2 && parts[1].length > 6) {
-      input = parts[0] + "." + parts[1].substring(0, 6);
+    // Limit decimal places to 18 (OrynUSD decimals)
+    if (parts.length === 2 && parts[1].length > 18) {
+      input = parts[0] + "." + parts[1].substring(0, 18);
     }
 
     setAmount(input);
@@ -183,10 +183,10 @@ export const BorrowInput: FC<BorrowInputType> = ({
               </div>
             </div>
           </span>
-          {/* Static OUSDC display - no modal needed */}
+          {/* Static OrynUSD display - no modal needed */}
           <TokenInfo
-            symbol={ousdcAsset.symbol}
-            tokenLogo={ousdcAsset.logo}
+            symbol={orynUSDAsset.symbol}
+            tokenLogo={orynUSDAsset.logo}
             onClick={() => { }}
           />
         </div>

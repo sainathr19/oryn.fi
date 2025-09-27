@@ -89,7 +89,7 @@ export const Dashboard = () => {
 
     try {
       setMintSuccess(false);
-      const amount = BigInt(parseFloat(mintAmount) * Math.pow(10, 6)); // OUSDC has 6 decimals
+      const amount = BigInt(parseFloat(mintAmount) * Math.pow(10, 18)); // OrynUSD has 18 decimals
       await mintOrynUSD(Number(selectedPosition.positionId), amount);
       setMintSuccess(true);
       setMintAmount("");
@@ -103,7 +103,7 @@ export const Dashboard = () => {
 
     try {
       setRepaySuccess(false);
-      const amount = BigInt(parseFloat(repayAmount) * Math.pow(10, 6)); // OUSDC has 6 decimals
+      const amount = BigInt(parseFloat(repayAmount) * Math.pow(10, 18)); // OrynUSD has 18 decimals
 
       const result = await burnOrynUSD(Number(selectedPosition.positionId), amount);
       console.log("Repay completed:", result);
