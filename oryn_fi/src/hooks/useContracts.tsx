@@ -4,6 +4,7 @@ import { ORYN_V3_ABI } from "../constants/abi/OrynV3";
 import { POSITION_MANAGET_ABI } from "../constants/abi/PositionManager";
 import { useAccount, useWalletClient } from "wagmi";
 import { getContract, type Client } from "viem";
+import { waitForTransactionReceipt } from "viem/actions";
 
 export const useContracts = () => {
   const { address } = useAccount();
@@ -37,6 +38,27 @@ export const useContracts = () => {
   const [nftError, setNftError] = useState<Error | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [isLoadingAllDetails, setIsLoadingAllDetails] = useState(false);
+  
+  // Transaction state for depositUniPosition
+  const [isDepositing, setIsDepositing] = useState(false);
+  const [depositError, setDepositError] = useState<Error | null>(null);
+  const [lastDepositTxHash, setLastDepositTxHash] = useState<string | null>(null);
+  
+  // Transaction state for NFT approval
+  const [isApproving, setIsApproving] = useState(false);
+  const [approvalError, setApprovalError] = useState<Error | null>(null);
+  const [lastApprovalTxHash, setLastApprovalTxHash] = useState<string | null>(null);
+  
+  // Transaction state for mint/repay/redeem operations
+  const [isMinting, setIsMinting] = useState(false);
+  const [isRepaying, setIsRepaying] = useState(false);
+  const [isRedeeming, setIsRedeeming] = useState(false);
+  const [mintError, setMintError] = useState<Error | null>(null);
+  const [repayError, setRepayError] = useState<Error | null>(null);
+  const [redeemError, setRedeemError] = useState<Error | null>(null);
+  const [lastMintTxHash, setLastMintTxHash] = useState<string | null>(null);
+  const [lastRepayTxHash, setLastRepayTxHash] = useState<string | null>(null);
+  const [lastRedeemTxHash, setLastRedeemTxHash] = useState<string | null>(null);
 
   const fetchUserPositions = useCallback(async () => {
     if (!orynContract || !address) {
@@ -45,9 +67,19 @@ export const useContracts = () => {
     }
     
     try {
-      const result = await orynContract.read.getUserPositions([address as `0x${string}`]);
+      // First get the position IDs
+      const positionIds = await orynContract.read.getUserPositions([address as `0x${string}`]) as bigint[];
+      console.log("User position IDs:", positionIds);
+      
+      if (positionIds.length === 0) {
+        setUserPositions([]);
+        return;
+      }
+      
+      // Then get the detailed position data
+      const result = await orynContract.read.getUserPositionDetails([address as `0x${string}`]) as any[];
+      console.log("User position details:", result);
       setUserPositions(result);
-      console.log("User positions:", result)
       setError(null);
     } catch (err) {
       setError(err as Error);
@@ -181,6 +213,251 @@ export const useContracts = () => {
     }
   }, [orynContract, fetchNFTPositionDetails]);
 
+  const approveNFT = useCallback(async (tokenId: number): Promise<string> => {
+    if (!positionManagerContract || !address) {
+      throw new Error("Position manager contract or address not available");
+    }
+
+    setIsApproving(true);
+    setApprovalError(null);
+    setLastApprovalTxHash(null);
+
+    try {
+      console.log(`Approving NFT token ID: ${tokenId} for Oryn contract: ${contractAddresses.ORYN_ENGINE_ADDRESS_V3}`);
+      
+      // Call the approve function on the position manager contract
+      const txHash = await positionManagerContract.write.approve([
+        contractAddresses.ORYN_ENGINE_ADDRESS_V3, // to address (Oryn contract)
+        BigInt(tokenId) // tokenId
+      ]);
+      
+      console.log("Approval transaction submitted:", txHash);
+      setLastApprovalTxHash(txHash);
+      
+      // Wait for the transaction to be mined
+      const receipt = await waitForTransactionReceipt(walletClient as Client, { hash: txHash });
+      
+      if (receipt.status === 'success') {
+        console.log("Approval transaction confirmed:", receipt);
+        return txHash;
+      } else {
+        throw new Error("Approval transaction failed");
+      }
+    } catch (err) {
+      const error = err as Error;
+      console.error("Failed to approve NFT:", error);
+      setApprovalError(error);
+      throw error;
+    } finally {
+      setIsApproving(false);
+    }
+  }, [positionManagerContract, address, walletClient]);
+
+  const depositUniPosition = useCallback(async (tokenId: number): Promise<{ positionId: bigint; txHash: string }> => {
+    if (!orynContract || !address) {
+      throw new Error("Contract or address not available");
+    }
+
+    setIsDepositing(true);
+    setDepositError(null);
+    setLastDepositTxHash(null);
+
+    try {
+      console.log(`Depositing NFT token ID: ${tokenId} for user: ${address}`);
+      
+      // Call the depositUniPosition function and wait for the transaction to be mined
+      const txHash = await orynContract.write.depositUniPosition([BigInt(tokenId)]);
+      
+      console.log("Deposit transaction submitted:", txHash);
+      setLastDepositTxHash(txHash);
+      
+      // Wait for the transaction to be mined and get the receipt
+      const receipt = await waitForTransactionReceipt(walletClient as Client, { hash: txHash });
+      
+      if (receipt.status === 'success') {
+        console.log("Transaction confirmed:", receipt);
+        
+        // The position ID is returned by the contract function
+        // We can get it by simulating the call or by parsing events
+        // For now, let's fetch the user positions to get the latest position ID
+        await fetchUserPositions();
+        
+        // Return the transaction hash and a placeholder position ID
+        // The actual position ID will be available in userPositions after the transaction
+        return {
+          positionId: BigInt(0), // This will be updated when we can parse the return value
+          txHash: txHash
+        };
+      } else {
+        throw new Error("Transaction failed");
+      }
+    } catch (err) {
+      const error = err as Error;
+      console.error("Failed to deposit Uni position:", error);
+      setDepositError(error);
+      throw error;
+    } finally {
+      setIsDepositing(false);
+    }
+  }, [orynContract, address, fetchUserPositions]);
+
+  // Combined function to approve and then deposit NFT
+  const approveAndDepositNFT = useCallback(async (tokenId: number): Promise<{ positionId: bigint; approvalTxHash: string; depositTxHash: string }> => {
+    try {
+      console.log(`Starting approve and deposit flow for token ID: ${tokenId}`);
+      
+      // Step 1: Approve the NFT
+      console.log("Step 1: Approving NFT...");
+      const approvalTxHash = await approveNFT(tokenId);
+      console.log("Approval completed:", approvalTxHash);
+      
+      // Step 2: Deposit the NFT
+      console.log("Step 2: Depositing NFT...");
+      const depositResult = await depositUniPosition(tokenId);
+      console.log("Deposit completed:", depositResult);
+      
+      return {
+        positionId: depositResult.positionId,
+        approvalTxHash,
+        depositTxHash: depositResult.txHash
+      };
+    } catch (error) {
+      console.error("Approve and deposit flow failed:", error);
+      throw error;
+    }
+  }, [approveNFT, depositUniPosition]);
+
+  // Function to mint OrynUSD tokens
+  const mintOrynUSD = useCallback(async (positionId: number, amount: bigint): Promise<string> => {
+    if (!orynContract || !address) {
+      throw new Error("Contract or address not available");
+    }
+
+    setIsMinting(true);
+    setMintError(null);
+    setLastMintTxHash(null);
+
+    try {
+      console.log(`Minting ${amount} OrynUSD for position ${positionId}`);
+      
+      // Call the mintOrynUSD function
+      const txHash = await orynContract.write.mintOrynUSD([BigInt(positionId), amount]);
+      
+      console.log("Mint transaction submitted:", txHash);
+      setLastMintTxHash(txHash);
+      
+      // Wait for the transaction to be mined
+      const receipt = await waitForTransactionReceipt(walletClient as Client, { hash: txHash });
+      
+      if (receipt.status === 'success') {
+        console.log("Mint transaction confirmed:", receipt);
+        // Refresh user positions to get updated data
+        await fetchUserPositions();
+        return txHash;
+      } else {
+        throw new Error("Mint transaction failed");
+      }
+    } catch (err) {
+      const error = err as Error;
+      console.error("Failed to mint OrynUSD:", error);
+      setMintError(error);
+      throw error;
+    } finally {
+      setIsMinting(false);
+    }
+  }, [orynContract, address, walletClient, fetchUserPositions]);
+
+  // Function to burn OrynUSD tokens (repay debt)
+  const burnOrynUSD = useCallback(async (positionId: number, amount: bigint): Promise<string> => {
+    if (!orynContract || !address) {
+      throw new Error("Contract or address not available");
+    }
+
+    setIsRepaying(true);
+    setRepayError(null);
+    setLastRepayTxHash(null);
+
+    try {
+      console.log(`Repaying ${amount} OrynUSD for position ${positionId}`);
+      
+      // Call the burnOrynUSD function
+      const txHash = await orynContract.write.burnOrynUSD([BigInt(positionId), amount]);
+      
+      console.log("Repay transaction submitted:", txHash);
+      setLastRepayTxHash(txHash);
+      
+      // Wait for the transaction to be mined
+      const receipt = await waitForTransactionReceipt(walletClient as Client, { hash: txHash });
+      
+      if (receipt.status === 'success') {
+        console.log("Repay transaction confirmed:", receipt);
+        // Refresh user positions to get updated data
+        await fetchUserPositions();
+        return txHash;
+      } else {
+        throw new Error("Repay transaction failed");
+      }
+    } catch (err) {
+      const error = err as Error;
+      console.error("Failed to repay OrynUSD:", error);
+      setRepayError(error);
+      throw error;
+    } finally {
+      setIsRepaying(false);
+    }
+  }, [orynContract, address, walletClient, fetchUserPositions]);
+
+  // Function to redeem UniPosition (withdraw NFT when debt is 0)
+  const redeemUniPosition = useCallback(async (positionId: number): Promise<string> => {
+    if (!orynContract || !address) {
+      throw new Error("Contract or address not available");
+    }
+
+    setIsRedeeming(true);
+    setRedeemError(null);
+    setLastRedeemTxHash(null);
+
+    try {
+      console.log(`Redeeming UniPosition ${positionId}`);
+      
+      // Call the redeemUniPosition function
+      const txHash = await orynContract.write.redeemUniPosition([BigInt(positionId)]);
+      
+      console.log("Redeem transaction submitted:", txHash);
+      setLastRedeemTxHash(txHash);
+      
+      // Wait for the transaction to be mined
+      const receipt = await waitForTransactionReceipt(walletClient as Client, { hash: txHash });
+      
+      if (receipt.status === 'success') {
+        console.log("Redeem transaction confirmed:", receipt);
+        // Refresh user positions to get updated data
+        await fetchUserPositions();
+        return txHash;
+      } else {
+        throw new Error("Redeem transaction failed");
+      }
+    } catch (err) {
+      const error = err as Error;
+      console.error("Failed to redeem UniPosition:", error);
+      setRedeemError(error);
+      throw error;
+    } finally {
+      setIsRedeeming(false);
+    }
+  }, [orynContract, address, walletClient, fetchUserPositions]);
+
+  // Function to check if an NFT is already deposited
+  const isNFTDeposited = useCallback((tokenId: number): boolean => {
+    if (!userPositions || !Array.isArray(userPositions)) return false;
+    
+    // Check if the tokenId exists in userPositions
+    // This assumes userPositions contains the deposited token IDs
+    return userPositions.some((position: any) => 
+      position.tokenId && Number(position.tokenId) === tokenId
+    );
+  }, [userPositions]);
+
   // Optionally, call fetchUserPositions when needed, e.g. in a useEffect
 
   
@@ -191,11 +468,33 @@ export const useContracts = () => {
     fetchUserNFTs,
     fetchNFTPositionDetails,
     fetchAllNFTDetails,
+    depositUniPosition,
+    approveNFT,
+    approveAndDepositNFT,
+    mintOrynUSD,
+    burnOrynUSD,
+    redeemUniPosition,
+    isNFTDeposited,
     userPositions,
     userTokenIds,
     isLoadingNFTs,
     isLoadingAllDetails,
+    isDepositing,
+    isApproving,
+    isMinting,
+    isRepaying,
+    isRedeeming,
     nftError,
-    error
+    error,
+    depositError,
+    approvalError,
+    mintError,
+    repayError,
+    redeemError,
+    lastDepositTxHash,
+    lastApprovalTxHash,
+    lastMintTxHash,
+    lastRepayTxHash,
+    lastRedeemTxHash
   }
 };

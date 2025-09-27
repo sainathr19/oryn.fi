@@ -19,3 +19,6 @@ export const contractAddresses: ContractAddresses = {
 };
 
 export type IOType = (typeof IOType)[keyof typeof IOType];
+
+// Loan-to-Value ratio constant
+export const MAX_LTV = 0.8;

@@ -3,13 +3,22 @@ import { IOType } from "../../constants/constants";
 import clsx from "clsx";
 import NumberFlow from "@number-flow/react";
 import { TokenInfo } from "../UI/TokenInfo";
+import { validateBorrowAmount } from "../../utils/borrowCalculations";
 
 type BorrowInputType = {
   type: IOType;
+  maxValue?: number;
+  onAmountChange?: (amount: number) => void;
+  onValidationChange?: (isValid: boolean, error?: string) => void;
 };
 
-export const BorrowInput: FC<BorrowInputType> = ({ type }) => {
-  const label = type === IOType.collateral ? "Collateral" : "Loan";
+export const BorrowInput: FC<BorrowInputType> = ({ 
+  type, 
+  maxValue, 
+  onAmountChange, 
+  onValidationChange 
+}) => {
+  const label = type === IOType.collateral ? "Collateral" : "Loan Amount";
 
   // Static OUSDC asset data
   const ousdcAsset = {
@@ -19,6 +28,7 @@ export const BorrowInput: FC<BorrowInputType> = ({ type }) => {
   };
 
   const [amount, setAmount] = useState("");
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const [isFocused, setIsFocused] = useState(false);
   const [animated, setAnimated] = useState(true);
@@ -61,6 +71,19 @@ export const BorrowInput: FC<BorrowInputType> = ({ type }) => {
     }
 
     setAmount(input);
+
+    // Validate the amount and notify parent component
+    const numericAmount = parseFloat(input) || 0;
+    if (maxValue && numericAmount > 0) {
+      const validation = validateBorrowAmount(numericAmount, maxValue);
+      setValidationError(validation.error || null);
+      onValidationChange?.(validation.isValid, validation.error);
+    } else {
+      setValidationError(null);
+      onValidationChange?.(true);
+    }
+    
+    onAmountChange?.(numericAmount);
   };
 
   useEffect(() => {
@@ -88,18 +111,20 @@ export const BorrowInput: FC<BorrowInputType> = ({ type }) => {
         <div className="flex justify-between">
           <div className="flex gap-3">
             <h4 className="text-sm font-medium">{label}</h4>
-            <div className="flex gap-2">
-              {/* {amount && Number(price) !== 0 && ( */}
+            {maxValue && (
               <h5 className="text-sm">
                 <span className="text-mid-grey">
-                  {/* ~${formatAmountUsd(price, 0)} */}
-                  $2000
+                  Max: ${maxValue.toFixed(2)}
                 </span>
               </h5>
-              {/* )} */}
-            </div>
+            )}
           </div>
         </div>
+        {validationError && (
+          <div className="text-red-500 text-xs mt-1">
+            {validationError}
+          </div>
+        )}
         <div className="flex h-5 justify-between sm:h-7">
           <span className="text-2xl font-medium">
             <div className="relative w-[150px] max-w-[150px] md:w-[200px] md:max-w-[200px]">
@@ -169,3 +194,4 @@ export const BorrowInput: FC<BorrowInputType> = ({ type }) => {
     </>
   );
 };
+
