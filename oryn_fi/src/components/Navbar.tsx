@@ -3,6 +3,13 @@ import { Typo } from "../assets/Typo";
 import { WalletConnectButton } from "./UI/WalletConnect";
 
 const Navbar = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const handleLaunchApp = () => {
+    navigate("/borrow");
+  };
+
   return (
     <nav className="z-50 fixed top-0 w-full px-6">
       <div className="max-w-7xl flex items-center justify-between py-5 mx-auto">
