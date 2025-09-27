@@ -3,18 +3,6 @@ import { IOType } from "../../constants/constants";
 import clsx from "clsx";
 import NumberFlow from "@number-flow/react";
 import { TokenInfo } from "../UI/TokenInfo";
-import { ChevronDown } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "../UI/dialog";
-import { SelectToken } from "../UI/SelectToken";
-import { useAssets } from "../../hooks/useAssets";
-import type { Asset } from "../../types/assets";
 
 type BorrowInputType = {
   type: IOType;
@@ -23,17 +11,14 @@ type BorrowInputType = {
 export const BorrowInput: FC<BorrowInputType> = ({ type }) => {
   const label = type === IOType.collateral ? "Collateral" : "Loan";
 
-  const { assets, chains, loading, error } = useAssets();
-  const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
-  const [selectedChainName, setSelectedChainName] = useState<string>("sepolia");
-  const [amount, setAmount] = useState("");
+  // Static OUSDC asset data
+  const ousdcAsset = {
+    symbol: "OUSDC",
+    logo: "https://garden.imgix.net/ethglobal/OrynUSDC.svg",
+    decimals: 6
+  };
 
-  useEffect(() => {
-    if (assets.length > 0 && !selectedAsset) {
-      const defaultAsset = assets.find(asset => asset.symbol === "USDC") || assets[0];
-      setSelectedAsset(defaultAsset);
-    }
-  }, [assets, selectedAsset]);
+  const [amount, setAmount] = useState("");
 
   const [isFocused, setIsFocused] = useState(false);
   const [animated, setAnimated] = useState(true);
@@ -69,6 +54,12 @@ export const BorrowInput: FC<BorrowInputType> = ({ type }) => {
       }, 800);
       return;
     }
+
+    // Limit decimal places to 6 (OUSDC decimals)
+    if (parts.length === 2 && parts[1].length > 6) {
+      input = parts[0] + "." + parts[1].substring(0, 6);
+    }
+
     setAmount(input);
   };
 
@@ -167,65 +158,12 @@ export const BorrowInput: FC<BorrowInputType> = ({ type }) => {
               </div>
             </div>
           </span>
-          <Dialog>
-            <DialogTrigger>
-              {selectedAsset && chains[selectedChainName] ? (
-                <TokenInfo
-                  symbol={selectedAsset.symbol}
-                  tokenLogo={selectedAsset.logo}
-                  chainLogo={chains[selectedChainName].networkLogo}
-                  onClick={() => { }}
-                />
-              ) : loading ? (
-                <div className="flex cursor-pointer items-center gap-1">
-                  <span>Loading...</span>
-                </div>
-              ) : error ? (
-                <div className="flex cursor-pointer items-center gap-1">
-                  <span>Error loading tokens</span>
-                </div>
-              ) : (
-                <div
-                  className="flex cursor-pointer items-center gap-1"
-                  onClick={() => { }}
-                >
-                  <span>Select token</span>
-                  <ChevronDown className="w-5" />
-                </div>
-              )}
-            </DialogTrigger>
-            <DialogContent className="max-w-md w-full">
-              <DialogHeader>
-                <DialogTitle>Select a token</DialogTitle>
-                <DialogDescription>
-                  <div className="max-h-96 overflow-y-auto pt-4">
-                    <div className="grid grid-cols-1 gap-2">
-                      {Object.entries(chains).map(([chainName, chain]) =>
-                        chain.assetConfig.map((asset) => (
-                          <SelectToken
-                            key={`${chainName}-${asset.tokenAddress}`}
-                            asset={{
-                              symbol: asset.symbol,
-                              logo: asset.logo,
-                              network: {
-                                networkName: chain.name,
-                                chainId: parseInt(chain.chainId),
-                                networkLogo: chain.networkLogo,
-                              },
-                            }}
-                            onClick={() => {
-                              setSelectedAsset(asset);
-                              setSelectedChainName(chainName);
-                            }}
-                          />
-                        ))
-                      ).flat()}
-                    </div>
-                  </div>
-                </DialogDescription>
-              </DialogHeader>
-            </DialogContent>
-          </Dialog>
+          {/* Static OUSDC display - no modal needed */}
+          <TokenInfo
+            symbol={ousdcAsset.symbol}
+            tokenLogo={ousdcAsset.logo}
+            onClick={() => { }}
+          />
         </div>
       </div>
     </>

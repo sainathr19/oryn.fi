@@ -26,15 +26,15 @@ export const useAssets = (chainName?: string) => {
                 if (data.success && data.data?.chains) {
                     setChains(data.data.chains);
 
-                    if (chainName && data.data.chains[chainName]) {
-                        setAssets(data.data.chains[chainName].assetConfig);
-                    } else {
-                        const allAssets: Asset[] = [];
-                        Object.values(data.data.chains).forEach(chain => {
-                            allAssets.push(...chain.assetConfig);
-                        });
-                        setAssets(allAssets);
-                    }
+                    // Only show USDC (OUSDC) assets
+                    const usdcAssets: Asset[] = [];
+                    Object.values(data.data.chains).forEach(chain => {
+                        const usdcAsset = chain.assetConfig.find(asset => asset.symbol === 'USDC');
+                        if (usdcAsset) {
+                            usdcAssets.push(usdcAsset);
+                        }
+                    });
+                    setAssets(usdcAssets);
                 } else {
                     throw new Error('Failed to fetch chains data');
                 }

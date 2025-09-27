@@ -449,6 +449,21 @@ export const ORYN_V3_ABI = [
     type: "function",
   },
   {
+    inputs: [{ internalType: "uint256", name: "tokenId", type: "uint256" }],
+    name: "getNFTPositionDetails",
+    outputs: [
+      { internalType: "address", name: "token0", type: "address" },
+      { internalType: "address", name: "token1", type: "address" },
+      { internalType: "uint24", name: "fee", type: "uint24" },
+      { internalType: "uint128", name: "liquidity", type: "uint128" },
+      { internalType: "uint256", name: "totalValueUSD", type: "uint256" },
+      { internalType: "uint256", name: "principalValueUSD", type: "uint256" },
+      { internalType: "uint256", name: "feeValueUSD", type: "uint256" },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
     inputs: [],
     name: "getOrynUSDContractAddress",
     outputs: [{ internalType: "contract OrynUSD", name: "", type: "address" }],

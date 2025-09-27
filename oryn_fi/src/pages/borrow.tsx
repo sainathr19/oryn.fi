@@ -7,6 +7,7 @@ export const Borrow = () => {
   const { 
     fetchUserPositions, 
     fetchUserNFTs, 
+    fetchAllNFTDetails,
     userTokenIds, 
     isLoadingNFTs, 
     nftError 
@@ -21,12 +22,15 @@ export const Borrow = () => {
     }
   }, [fetchUserPositions, fetchUserNFTs])
 
-  // Log the fetched token IDs
+  // Log the fetched token IDs and fetch all details
   useEffect(() => {
     if (userTokenIds.length > 0) {
       console.log("Fetched user token IDs:", userTokenIds);
+      if (fetchAllNFTDetails) {
+        fetchAllNFTDetails(userTokenIds);
+      }
     }
-  }, [userTokenIds])
+  }, [userTokenIds, fetchAllNFTDetails])
 
   // Log loading and error states
   useEffect(() => {

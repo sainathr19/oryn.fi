@@ -36,6 +36,7 @@ export const useContracts = () => {
   const [isLoadingNFTs, setIsLoadingNFTs] = useState(false);
   const [nftError, setNftError] = useState<Error | null>(null);
   const [error, setError] = useState<Error | null>(null);
+  const [isLoadingAllDetails, setIsLoadingAllDetails] = useState(false);
 
   const fetchUserPositions = useCallback(async () => {
     if (!orynContract || !address) {
@@ -101,6 +102,85 @@ export const useContracts = () => {
     }
   }, [positionManagerContract, address]);
 
+  const fetchNFTPositionDetails = useCallback(async (tokenId: number) => {
+    if (!orynContract) {
+      console.warn("Oryn contract not available");
+      return;
+    }
+
+    try {
+      const details = await orynContract.read.getNFTPositionDetails([BigInt(tokenId)]) as [
+        string, string, number, bigint, bigint, bigint, bigint
+      ];
+      
+      const positionDetails = {
+        token0: details[0],
+        token1: details[1],
+        fee: details[2],
+        liquidity: details[3],
+        totalValueUSD: details[4],
+        principalValueUSD: details[5],
+        feeValueUSD: details[6],
+      };
+
+      console.log("NFT Position Details:", positionDetails);
+      return positionDetails;
+    } catch (err) {
+      console.error("Failed to fetch NFT position details:", err);
+      throw err;
+    }
+  }, [orynContract]);
+
+  const fetchAllNFTDetails = useCallback(async (tokenIds: number[]) => {
+    if (!orynContract || tokenIds.length === 0) {
+      return;
+    }
+
+    setIsLoadingAllDetails(true);
+    
+    try {
+      // Import the utility functions
+      const { fetchTokenMetadata, findTokenByAddress } = await import('../utils/tokenMetadata');
+      
+      // Fetch token metadata once
+      const metadataResponse = await fetchTokenMetadata();
+      
+      // Fetch details for all NFTs in parallel
+      const detailPromises = tokenIds.map(async (tokenId) => {
+        try {
+          const positionDetails = await fetchNFTPositionDetails(tokenId);
+          if (positionDetails) {
+            const token0Metadata = findTokenByAddress(positionDetails.token0, metadataResponse);
+            const token1Metadata = findTokenByAddress(positionDetails.token1, metadataResponse);
+            
+            if (token0Metadata && token1Metadata) {
+              // Import the store to update it
+              const { useNFTStore } = await import('../stores/nftStore');
+              useNFTStore.getState().setAllNFTDetails(tokenId, positionDetails, token0Metadata, token1Metadata);
+              
+              return {
+                tokenId,
+                positionDetails,
+                token0Metadata,
+                token1Metadata,
+              };
+            }
+          }
+        } catch (err) {
+          console.error(`Failed to fetch details for token ${tokenId}:`, err);
+        }
+        return null;
+      });
+
+      const results = await Promise.all(detailPromises);
+      return results.filter(result => result !== null);
+    } catch (err) {
+      console.error("Failed to fetch all NFT details:", err);
+    } finally {
+      setIsLoadingAllDetails(false);
+    }
+  }, [orynContract, fetchNFTPositionDetails]);
+
   // Optionally, call fetchUserPositions when needed, e.g. in a useEffect
 
   
@@ -109,9 +189,12 @@ export const useContracts = () => {
   return {
     fetchUserPositions,
     fetchUserNFTs,
+    fetchNFTPositionDetails,
+    fetchAllNFTDetails,
     userPositions,
     userTokenIds,
     isLoadingNFTs,
+    isLoadingAllDetails,
     nftError,
     error
   }

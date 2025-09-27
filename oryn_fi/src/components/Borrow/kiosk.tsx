@@ -5,6 +5,7 @@ import { InfoIcon } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../UI/tooltip";
 import { useAccount } from "wagmi";
 import { useNFTStore } from "../../stores/nftStore";
+import { formatUSDValue } from "../../utils/tokenMetadata";
 const healthFactor = 1.8;
 
 const getHealthFactorColor = (hf: number) => {
@@ -16,7 +17,17 @@ const getHealthFactorColor = (hf: number) => {
 
 export const Kiosk = () => {
   const { address } = useAccount();
-  const { selectedNFT } = useNFTStore();
+  const { selectedNFT, allNFTDetails } = useNFTStore();
+  
+  // Get the details for the selected NFT from the stored data
+  const selectedNFTDetails = selectedNFT.tokenId ? allNFTDetails[selectedNFT.tokenId] : null;
+  
+  // Debug logging
+  console.log("Kiosk Debug:", {
+    selectedNFTTokenId: selectedNFT.tokenId,
+    allNFTDetailsKeys: Object.keys(allNFTDetails),
+    selectedNFTDetails: selectedNFTDetails
+  });
 
   return address ? (
     <div className="flex flex-col gap-3 px-2 pb-3 pt-2 sm:px-3 sm:pb-4 sm:pt-3 w-full text-dark-grey">
@@ -30,13 +41,46 @@ export const Kiosk = () => {
             <p className="text-gray-500 text-xs mt-1">Click on an NFT from the list to view details</p>
           </div>
         </div>
+      ) : selectedNFT.isLoadingDetails ? (
+        <div className="flex items-center justify-center h-full min-h-[400px] rounded-2xl bg-gray-50 border border-gray-200">
+          <div className="text-center">
+            <p className="text-gray-600 text-sm font-medium">Loading NFT details...</p>
+            <p className="text-gray-500 text-xs mt-1">Fetching position information</p>
+          </div>
+        </div>
+      ) : selectedNFT.error ? (
+        <div className="flex items-center justify-center h-full min-h-[400px] rounded-2xl bg-red-50 border border-red-200">
+          <div className="text-center">
+            <p className="text-red-600 text-sm font-medium">Error loading NFT details</p>
+            <p className="text-red-500 text-xs mt-1">{selectedNFT.error}</p>
+          </div>
+        </div>
       ) : (
         <>
           <div className="gap-2 rounded-2xl bg-white/50 p-4 grid grid-cols-2 mt-2">
         <span className="flex items-center justify-start gap-1.5">
           <h5 className="text-sm font-medium text-mid-grey">Pair:</h5>
           <p className="text-lg tracking-tighter font-medium">
-            ETH / USDC (0.3% fee)
+            {selectedNFTDetails ? (
+              <>
+                <img 
+                  src={selectedNFTDetails.token0Metadata.logo} 
+                  alt={selectedNFTDetails.token0Metadata.symbol}
+                  className="w-4 h-4 inline-block mr-1 rounded-sm"
+                />
+                {selectedNFTDetails.token0Metadata.symbol} / {selectedNFTDetails.token1Metadata.symbol}
+                <img 
+                  src={selectedNFTDetails.token1Metadata.logo} 
+                  alt={selectedNFTDetails.token1Metadata.symbol}
+                  className="w-4 h-4 inline-block ml-1 rounded-sm"
+                />
+                <span className="text-sm text-mid-grey ml-2">
+                  ({selectedNFTDetails.positionDetails.fee / 10000}% fee)
+                </span>
+              </>
+            ) : (
+              'Loading...'
+            )}
           </p>
         </span>
         <span className="flex items-center justify-start gap-1.5">
@@ -47,11 +91,21 @@ export const Kiosk = () => {
         </span>
         <span className="flex items-center justify-start gap-1.5">
           <h5 className="text-sm font-medium text-mid-grey">Current Value:</h5>
-          <p className="text-lg font-medium">$5,230</p>
+          <p className="text-lg font-medium">
+            {selectedNFTDetails ? 
+              formatUSDValue(selectedNFTDetails.positionDetails.totalValueUSD) : 
+              'Loading...'
+            }
+          </p>
         </span>
         <span className="flex items-center justify-start gap-1.5">
           <h5 className="text-sm font-medium text-mid-grey">Fees Acquired:</h5>
-          <p className="text-lg font-medium">$125</p>
+          <p className="text-lg font-medium">
+            {selectedNFTDetails ? 
+              formatUSDValue(selectedNFTDetails.positionDetails.feeValueUSD) : 
+              'Loading...'
+            }
+          </p>
         </span>
       </div>
       <div className="relative flex flex-col gap-3 w-full">
