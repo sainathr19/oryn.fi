@@ -1,0 +1,2 @@
+rpc_url = "https://public-node.testnet.rsk.co"
+private_key = "<YOUR_PRIVATE_KEY>"
