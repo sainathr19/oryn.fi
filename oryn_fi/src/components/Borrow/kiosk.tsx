@@ -205,7 +205,7 @@ export const Kiosk = ({
 
   // Validate borrow amount against collateral value and available borrow power
   const borrowValidation = validateBorrowAmount(
-    Number(borrowAmount),
+    borrowAmountNumber,
     maxBorrowPower,
     fiatValue
   );
@@ -217,10 +217,8 @@ export const Kiosk = ({
     isValidAmount &&
     borrowAmount > BigInt(0) &&
     borrowAmountNumber <= maxBorrowPower &&
+    borrowAmountNumber <= fiatValue && // Ensure borrow amount doesn't exceed collateral value
     borrowValidation.isValid &&
-    borrowAmount > 0 &&
-    borrowAmount <= maxBorrowPower &&
-    borrowAmount <= fiatValue && // Ensure borrow amount doesn't exceed collateral value
     !isMinting &&
     !isBorrowLoading;
 

@@ -22,7 +22,7 @@ export const BorrowInput: FC<BorrowInputType> = ({
 
   // Static OrynUSD asset data
   const orynUSDAsset = {
-    symbol: "OrynUSD",
+    symbol: "OUSD",
     logo: "https://garden.imgix.net/ethglobal/OrynUSDC.svg",
     decimals: 18,
   };
@@ -79,6 +79,7 @@ export const BorrowInput: FC<BorrowInputType> = ({
       setValidationError(validation.error || null);
       onValidationChange?.(validation.isValid, validation.error);
     } else {
+      // When amount is 0 or no maxValue, it's valid but not ready to borrow
       setValidationError(null);
       onValidationChange?.(true);
     }
