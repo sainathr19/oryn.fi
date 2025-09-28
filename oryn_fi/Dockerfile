@@ -35,11 +35,11 @@ RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
     yarn install --immutable --inline-builds
 
 # Set build environment variables
-ARG VITE_UNI_V3_POSITION_MANAGER_ADDRESS
-ARG VITE_ENVIRONMENT
+ARG VITE_PROJECT_ID
+ARG VITE_ASSETS_URL
 
-ENV VITE_UNI_V3_POSITION_MANAGER_ADDRESS=${VITE_UNI_V3_POSITION_MANAGER_ADDRESS}
-ENV VITE_ENVIRONMENT=${VITE_ENVIRONMENT}
+ENV VITE_PROJECT_ID=${VITE_PROJECT_ID}
+ENV VITE_ASSETS_URL=${VITE_ASSETS_URL}
 
 # Production build settings
 ENV NODE_ENV=production
