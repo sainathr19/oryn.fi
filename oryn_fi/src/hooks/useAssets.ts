@@ -26,15 +26,22 @@ export const useAssets = (chainName?: string) => {
                 if (data.success && data.data?.chains) {
                     setChains(data.data.chains);
 
-                    // Only show USDC (OUSDC) assets
-                    const usdcAssets: Asset[] = [];
-                    Object.values(data.data.chains).forEach(chain => {
-                        const usdcAsset = chain.assetConfig.find(asset => asset.symbol === 'USDC');
-                        if (usdcAsset) {
-                            usdcAssets.push(usdcAsset);
-                        }
+                    // Show all assets with non-empty token addresses, including chain info
+                    const allAssets: Asset[] = [];
+                    Object.entries(data.data.chains).forEach(([chainKey, chain]) => {
+                        chain.assetConfig.forEach(asset => {
+                            if (asset.tokenAddress && asset.tokenAddress !== '') {
+                                allAssets.push({
+                                    ...asset,
+                                    chainKey,
+                                    chainName: chain.name,
+                                    chainLogo: chain.networkLogo,
+                                    chainId: chain.chainId
+                                });
+                            }
+                        });
                     });
-                    setAssets(usdcAssets);
+                    setAssets(allAssets);
                 } else {
                     throw new Error('Failed to fetch chains data');
                 }

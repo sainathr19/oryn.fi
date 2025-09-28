@@ -4,7 +4,8 @@ import { ORYN_V3_ABI } from "../constants/abi/OrynV3";
 import { POSITION_MANAGET_ABI } from "../constants/abi/PositionManager";
 import { useAccount, useWalletClient } from "wagmi";
 import { erc20Abi, getContract, type Client } from "viem";
-import { waitForTransactionReceipt, writeContract } from "viem/actions";
+import { waitForTransactionReceipt, writeContract, readContract } from "viem/actions";
+import type { Asset } from "../types/assets";
 
 export const useContracts = () => {
   const { address } = useAccount();
@@ -76,6 +77,11 @@ export const useContracts = () => {
   const [lastTokenApprovalTxHash, setLastTokenApprovalTxHash] = useState<
     string | null
   >(null);
+
+  // Token balance state
+  const [tokenBalances, setTokenBalances] = useState<Record<string, bigint>>({});
+  const [isLoadingBalances, setIsLoadingBalances] = useState(false);
+  const [balanceError, setBalanceError] = useState<Error | null>(null);
 
   const fetchUserPositions = useCallback(async () => {
     if (!orynContract || !address) {
@@ -280,6 +286,105 @@ export const useContracts = () => {
       }
     },
     [orynContract, fetchNFTPositionDetails]
+  );
+
+  // Function to fetch token balances for a list of assets
+  const fetchTokenBalances = useCallback(
+    async (assets: Asset[]) => {
+      if (!address || !walletClient || assets.length === 0) {
+        console.warn("Address, wallet client, or assets not available");
+        return;
+      }
+
+      setIsLoadingBalances(true);
+      setBalanceError(null);
+
+      try {
+        console.log("Fetching token balances for assets:", assets);
+
+        // Create contract instances for each token and fetch balances in parallel
+        const balancePromises = assets.map(async (asset) => {
+          try {
+            const balance = await readContract(walletClient as Client, {
+              abi: erc20Abi,
+              address: asset.tokenAddress as `0x${string}`,
+              functionName: "balanceOf",
+              args: [address as `0x${string}`],
+            });
+
+            console.log(`Balance for ${asset.symbol} (${asset.tokenAddress}):`, balance);
+            return {
+              tokenAddress: asset.tokenAddress,
+              balance: balance as bigint,
+            };
+          } catch (err) {
+            console.error(`Failed to fetch balance for ${asset.symbol}:`, err);
+            return {
+              tokenAddress: asset.tokenAddress,
+              balance: 0n,
+            };
+          }
+        });
+
+        const results = await Promise.all(balancePromises);
+
+        // Convert results to a record for easy lookup
+        const balances: Record<string, bigint> = {};
+        results.forEach(({ tokenAddress, balance }) => {
+          balances[tokenAddress] = balance;
+        });
+
+        setTokenBalances(balances);
+        console.log("All token balances fetched:", balances);
+      } catch (err) {
+        const error = err as Error;
+        console.error("Failed to fetch token balances:", error);
+        setBalanceError(error);
+      } finally {
+        setIsLoadingBalances(false);
+      }
+    },
+    [address, walletClient]
+  );
+
+  // Function to get balance for a specific token
+  const getTokenBalance = useCallback(
+    (tokenAddress: string): bigint => {
+      return tokenBalances[tokenAddress] || 0n;
+    },
+    [tokenBalances]
+  );
+
+  // Function to get formatted balance for a specific token
+  const getFormattedTokenBalance = useCallback(
+    (tokenAddress: string, decimals: number): string => {
+      const balance = getTokenBalance(tokenAddress);
+      const formatted = Number(balance) / Math.pow(10, decimals);
+
+      // Format with appropriate decimal places and grouping
+      if (formatted >= 1000000) {
+        return formatted.toLocaleString('en-US', {
+          maximumFractionDigits: 2,
+          minimumFractionDigits: 0
+        });
+      } else if (formatted >= 1000) {
+        return formatted.toLocaleString('en-US', {
+          maximumFractionDigits: 3,
+          minimumFractionDigits: 0
+        });
+      } else if (formatted >= 1) {
+        return formatted.toLocaleString('en-US', {
+          maximumFractionDigits: 4,
+          minimumFractionDigits: 0
+        });
+      } else {
+        return formatted.toLocaleString('en-US', {
+          maximumFractionDigits: 6,
+          minimumFractionDigits: 0
+        });
+      }
+    },
+    [getTokenBalance]
   );
 
   // Function to get OrynUSD contract address
@@ -730,5 +835,12 @@ export const useContracts = () => {
     lastRepayTxHash,
     lastRedeemTxHash,
     orynUSDContractAddress,
+    // Balance-related functions and state
+    fetchTokenBalances,
+    getTokenBalance,
+    getFormattedTokenBalance,
+    tokenBalances,
+    isLoadingBalances,
+    balanceError,
   };
 };

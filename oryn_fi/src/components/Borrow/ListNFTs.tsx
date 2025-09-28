@@ -85,8 +85,6 @@ export const ListNFTs = ({
       return (
         <>
           <SkeletonPosition />
-          <SkeletonPosition />
-          <SkeletonPosition />
         </>
       );
     }
