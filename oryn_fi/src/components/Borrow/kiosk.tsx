@@ -6,6 +6,7 @@ import { InfoIcon, Loader2 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../UI/tooltip";
 import { useAccount } from "wagmi";
 import { useContracts } from "../../hooks/useContracts";
+import { validateBorrowAmount } from "../../utils/borrowCalculations";
 
 interface PositionDetails {
   positionId: bigint;
@@ -77,24 +78,27 @@ export const Kiosk = ({
     ? Number(selectedPosition.collateralValueUSD) / Math.pow(10, 18)
     : 0;
 
-  // Calculate max borrow power (80% of fiat value)
-  const maxBorrowPower = fiatValue * 0.8;
-
-  // Calculate health factor based on borrow amount
+  // Calculate current debt in USD
   const currentDebt = selectedPosition
     ? Number(selectedPosition.debtValueUSD) / Math.pow(10, 18)
     : 0;
 
-  // Calculate max loan amount (collateral value * LTV)
-  const maxLoanAmount = fiatValue * MAX_LTV;
+  // Calculate max borrow power (80% of collateral - existing debt)
+  const maxBorrowPower = Math.max(0, fiatValue * MAX_LTV - currentDebt);
 
   // Health factor = max loan amount / (current debt + borrow amount)
   const borrowAmountNumber = Number(borrowAmount) / Math.pow(10, 18);
   const totalDebt = currentDebt + borrowAmountNumber;
-  const healthFactor = totalDebt > 0 ? maxLoanAmount / totalDebt : Infinity;
+  const healthFactor = totalDebt > 0 ? maxBorrowPower / totalDebt : Infinity;
 
-  // Calculate liquidation threshold
-  const liquidationThreshold = fiatValue * 0.8;
+  // Liquidation threshold shows the collateral value at which liquidation would occur
+  // When HF = 1 (max borrowing), LT = 95% of collateral (5% margin)
+  // When HF is high (safe), LT = much lower collateral value
+  const maxLiquidationDebt = fiatValue * MAX_LTV;
+  const currentHealthFactor =
+    totalDebt > 0 ? maxLiquidationDebt / totalDebt : Infinity;
+  // Liquidation threshold = collateral value needed to support current debt at 80% LTV
+  const liquidationThreshold = totalDebt / MAX_LTV;
 
   // Check if the selected NFT is already deposited
   const isNFTDeposited = selectedNFT ? checkIsNFTDeposited(selectedNFT) : false;
@@ -144,10 +148,7 @@ export const Kiosk = ({
       });
 
       // Call mintOrynUSD directly with the BigInt amount
-      await mintOrynUSD(
-        Number(selectedPosition.positionId),
-        borrowAmount
-      );
+      await mintOrynUSD(Number(selectedPosition.positionId), borrowAmount);
 
       // Reset borrow amount after successful mint
       setBorrowAmount(BigInt(0));
@@ -190,10 +191,7 @@ export const Kiosk = ({
       });
 
       // Call burnOrynUSD directly with the BigInt amount
-      await burnOrynUSD(
-        Number(selectedPosition.positionId),
-        repayAmount
-      );
+      await burnOrynUSD(Number(selectedPosition.positionId), repayAmount);
 
       // Reset repay amount after successful repay
       setRepayAmount(BigInt(0));
@@ -205,6 +203,13 @@ export const Kiosk = ({
     }
   };
 
+  // Validate borrow amount against collateral value and available borrow power
+  const borrowValidation = validateBorrowAmount(
+    Number(borrowAmount),
+    maxBorrowPower,
+    fiatValue
+  );
+
   // Determine if borrow button should be enabled
   const isBorrowEnabled =
     address &&
@@ -212,6 +217,10 @@ export const Kiosk = ({
     isValidAmount &&
     borrowAmount > BigInt(0) &&
     borrowAmountNumber <= maxBorrowPower &&
+    borrowValidation.isValid &&
+    borrowAmount > 0 &&
+    borrowAmount <= maxBorrowPower &&
+    borrowAmount <= fiatValue && // Ensure borrow amount doesn't exceed collateral value
     !isMinting &&
     !isBorrowLoading;
 
@@ -221,7 +230,8 @@ export const Kiosk = ({
     selectedPosition &&
     isValidRepayAmount &&
     repayAmount > BigInt(0) &&
-    Number(repayAmount) / Math.pow(10, 18) <= Number(selectedPosition.debtValueUSD) / Math.pow(10, 18) &&
+    Number(repayAmount) / Math.pow(10, 18) <=
+      Number(selectedPosition.debtValueUSD) / Math.pow(10, 18) &&
     !isRepaying &&
     !isRepayLoading;
 
@@ -438,9 +448,28 @@ export const Kiosk = ({
               <h5 className="text-sm font-medium text-mid-grey">
                 Borrow power (max):
               </h5>
-              <p className="text-lg font-medium">
-                ${maxBorrowPower.toFixed(2)}
-              </p>
+              <div className="flex items-center gap-1">
+                <p className="text-lg font-medium">
+                  ${maxBorrowPower.toFixed(2)}
+                </p>
+                <Tooltip>
+                  <TooltipTrigger>
+                    <InfoIcon className="w-4 h-4 cursor-pointer text-mid-grey" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <div className="max-w-64 space-y-1">
+                      <p className="font-medium">Available Borrow Power</p>
+                      <p className="text-sm">
+                        Calculated as: (Collateral × 80%) - Existing Debt
+                      </p>
+                      <p className="text-xs text-gray-600">
+                        ${(fiatValue * MAX_LTV).toFixed(2)} - $
+                        {currentDebt.toFixed(2)} = ${maxBorrowPower.toFixed(2)}
+                      </p>
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
             </span>
             <span className="flex items-center justify-start gap-1.5">
               <h5 className="text-sm font-medium text-mid-grey">
@@ -455,10 +484,30 @@ export const Kiosk = ({
                     <InfoIcon className="w-4 h-4 cursor-pointer text-mid-grey" />
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p className="max-w-56">
-                      The collateral value limit beyond which your position can
-                      be liquidated.
-                    </p>
+                    <div className="max-w-64 space-y-1">
+                      <p className="font-medium">Liquidation Threshold</p>
+                      <p className="text-sm">
+                        Collateral value at which liquidation would occur. Lower
+                        debt = lower threshold.
+                      </p>
+                      <p className="text-xs text-gray-600">
+                        Current debt: ${currentDebt.toFixed(2)}
+                        {borrowAmount > 0 && (
+                          <>
+                            {" "}
+                            + ${Number(borrowAmount).toFixed(2)} = $
+                            {totalDebt.toFixed(2)}
+                          </>
+                        )}
+                      </p>
+                      <p className="text-xs text-gray-600">
+                        Health Factor:{" "}
+                        {currentHealthFactor === Infinity
+                          ? "∞"
+                          : currentHealthFactor.toFixed(2)}{" "}
+                        | Liquidation at: ${liquidationThreshold.toFixed(2)}
+                      </p>
+                    </div>
                   </TooltipContent>
                 </Tooltip>
               </div>
@@ -569,7 +618,9 @@ export const Kiosk = ({
                             left: `${positionPercent}%`,
                           }}
                         >
-                          {borrowAmount === BigInt(0) ? "-" : healthFactor.toFixed(2)}
+                          {borrowAmount === BigInt(0)
+                            ? "-"
+                            : healthFactor.toFixed(2)}
                         </div>
                       );
                     })()}
@@ -636,19 +687,27 @@ export const Kiosk = ({
                   step="0.01"
                   min="0"
                   max={Number(selectedPosition.debtValueUSD) / Math.pow(10, 18)}
-                  value={repayAmount === BigInt(0) ? "" : (Number(repayAmount) / Math.pow(10, 18)).toString()}
+                  value={
+                    repayAmount === BigInt(0)
+                      ? ""
+                      : (Number(repayAmount) / Math.pow(10, 18)).toString()
+                  }
                   onChange={(e) => {
                     const value = e.target.value;
                     if (value === "") {
                       setRepayAmount(BigInt(0));
                       setIsValidRepayAmount(true);
                     } else {
-                      const amount = BigInt(parseFloat(value) * Math.pow(10, 18));
+                      const amount = BigInt(
+                        parseFloat(value) * Math.pow(10, 18)
+                      );
                       setRepayAmount(amount);
                       const amountNumber = Number(amount) / Math.pow(10, 18);
                       setIsValidRepayAmount(
                         amountNumber > 0 &&
-                          amountNumber <= Number(selectedPosition.debtValueUSD) / Math.pow(10, 18)
+                          amountNumber <=
+                            Number(selectedPosition.debtValueUSD) /
+                              Math.pow(10, 18)
                       );
                     }
                   }}

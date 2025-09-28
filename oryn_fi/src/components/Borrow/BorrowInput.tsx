@@ -12,11 +12,11 @@ type BorrowInputType = {
   onValidationChange?: (isValid: boolean, error?: string) => void;
 };
 
-export const BorrowInput: FC<BorrowInputType> = ({ 
-  type, 
-  maxValue, 
-  onAmountChange, 
-  onValidationChange 
+export const BorrowInput: FC<BorrowInputType> = ({
+  type,
+  maxValue,
+  onAmountChange,
+  onValidationChange,
 }) => {
   const label = type === IOType.collateral ? "Collateral" : "Loan Amount";
 
@@ -24,7 +24,7 @@ export const BorrowInput: FC<BorrowInputType> = ({
   const orynUSDAsset = {
     symbol: "OrynUSD",
     logo: "https://garden.imgix.net/ethglobal/OrynUSDC.svg",
-    decimals: 18
+    decimals: 18,
   };
 
   const [amount, setAmount] = useState("");
@@ -82,7 +82,7 @@ export const BorrowInput: FC<BorrowInputType> = ({
       setValidationError(null);
       onValidationChange?.(true);
     }
-    
+
     // Convert to 18 decimals for blockchain operations
     const amountWithDecimals = BigInt(numericAmount * Math.pow(10, 18));
     onAmountChange?.(amountWithDecimals);
@@ -123,9 +123,7 @@ export const BorrowInput: FC<BorrowInputType> = ({
           </div>
         </div>
         {validationError && (
-          <div className="text-red-500 text-xs mt-1">
-            {validationError}
-          </div>
+          <div className="text-red-500 text-xs mt-1">{validationError}</div>
         )}
         <div className="flex h-5 justify-between sm:h-7">
           <span className="text-2xl font-medium">
@@ -177,8 +175,9 @@ export const BorrowInput: FC<BorrowInputType> = ({
                     onAnimationsFinish={() => {
                       setIsAnimating(false);
                     }}
-                    className={`w-full text-start font-[inherit] tracking-normal duration-200 ease-in-out ${showLoadingOpacity ? "opacity-75" : ""
-                      }`}
+                    className={`w-full text-start font-[inherit] tracking-normal duration-200 ease-in-out ${
+                      showLoadingOpacity ? "opacity-75" : ""
+                    }`}
                     willChange
                   />
                 )}
@@ -189,11 +188,10 @@ export const BorrowInput: FC<BorrowInputType> = ({
           <TokenInfo
             symbol={orynUSDAsset.symbol}
             tokenLogo={orynUSDAsset.logo}
-            onClick={() => { }}
+            onClick={() => {}}
           />
         </div>
       </div>
     </>
   );
 };
-
