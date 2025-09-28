@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { create } from "zustand";
 
 interface TokenMetadata {
   name: string;
@@ -29,16 +29,26 @@ interface SelectedNFT {
 
 interface NFTStore {
   selectedNFT: SelectedNFT;
-  allNFTDetails: Record<number, {
-    positionDetails: NFTPositionDetails;
-    token0Metadata: TokenMetadata;
-    token1Metadata: TokenMetadata;
-  }>;
+  allNFTDetails: Record<
+    number,
+    {
+      positionDetails: NFTPositionDetails;
+      token0Metadata: TokenMetadata;
+      token1Metadata: TokenMetadata;
+    }
+  >;
+  isLoadingAllDetails: boolean;
   setSelectedNFT: (tokenId: number | null) => void;
   setPositionDetails: (details: NFTPositionDetails) => void;
   setTokenMetadata: (token0: TokenMetadata, token1: TokenMetadata) => void;
-  setAllNFTDetails: (tokenId: number, details: NFTPositionDetails, token0: TokenMetadata, token1: TokenMetadata) => void;
+  setAllNFTDetails: (
+    tokenId: number,
+    details: NFTPositionDetails,
+    token0: TokenMetadata,
+    token1: TokenMetadata
+  ) => void;
   setLoadingDetails: (loading: boolean) => void;
+  setLoadingAllDetails: (loading: boolean) => void;
   setError: (error: string | null) => void;
   clearSelection: () => void;
 }
@@ -53,6 +63,7 @@ export const useNFTStore = create<NFTStore>((set) => ({
     error: null,
   },
   allNFTDetails: {},
+  isLoadingAllDetails: false,
   setSelectedNFT: (tokenId: number | null) =>
     set((state) => ({
       selectedNFT: {
@@ -79,7 +90,12 @@ export const useNFTStore = create<NFTStore>((set) => ({
         token1Metadata: token1,
       },
     })),
-  setAllNFTDetails: (tokenId: number, details: NFTPositionDetails, token0: TokenMetadata, token1: TokenMetadata) =>
+  setAllNFTDetails: (
+    tokenId: number,
+    details: NFTPositionDetails,
+    token0: TokenMetadata,
+    token1: TokenMetadata
+  ) =>
     set((state) => ({
       allNFTDetails: {
         ...state.allNFTDetails,
@@ -96,6 +112,10 @@ export const useNFTStore = create<NFTStore>((set) => ({
         ...state.selectedNFT,
         isLoadingDetails: loading,
       },
+    })),
+  setLoadingAllDetails: (loading: boolean) =>
+    set(() => ({
+      isLoadingAllDetails: loading,
     })),
   setError: (error: string | null) =>
     set((state) => ({

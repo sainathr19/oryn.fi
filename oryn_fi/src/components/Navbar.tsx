@@ -34,7 +34,7 @@ const Navbar = () => {
               <button
                 onClick={() => navigate("/dashboard")}
                 className={`hover:text-purple-600 transition-colors ${
-                  location.pathname === "/"
+                  location.pathname === "/dashboard"
                     ? "text-purple-600 font-semibold"
                     : "text-gray-700"
                 }`}
