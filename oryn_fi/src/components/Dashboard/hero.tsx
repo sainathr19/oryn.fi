@@ -1,6 +1,9 @@
+import { useNavigate } from "react-router-dom";
 import { Button } from "../UI/Button";
 
 export const Hero = () => {
+  const navigate = useNavigate();
+
   return (
     <section className="max-w-7xl mx-auto font-golos flex items-center justify-between gap-8 pt-36">
       <div className="flex justify-center items-start gap-8 flex-col">
@@ -13,7 +16,7 @@ export const Hero = () => {
           liquidity while still earning trading fees from Uniswap. A new era of
           NFT-backed CDPs for DeFi builders and yield farmers.
         </p>
-        <Button className="mt-2">
+        <Button className="mt-2" onClick={() => navigate("/borrow")}>
           <span className="px-6 py-1.5">Borrow Now</span>
         </Button>
       </div>
