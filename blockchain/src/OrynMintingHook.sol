@@ -76,17 +76,17 @@ contract OrynMintingHook is BaseHook {
         bytes calldata hookData
     ) internal override returns (bytes4, BalanceDelta) {
         // Only process if hook data is provided
-        if (hookData.length == 0) {
-            return (this.afterAddLiquidity.selector, BalanceDelta.wrap(0));
-        }
+        // if (hookData.length == 0) {
+        //     return (this.afterAddLiquidity.selector, BalanceDelta.wrap(0));
+        // }
 
         // Decode minting parameters
         MintingParams memory mintParams = abi.decode(hookData, (MintingParams));
         
         // Process minting if requested
-        if (mintParams.shouldMint) {
+        // if (mintParams.shouldMint) {
             _processMinting(sender, key, params, mintParams);
-        }
+        // }
 
         return (this.afterAddLiquidity.selector, BalanceDelta.wrap(0));
     }
@@ -105,7 +105,7 @@ contract OrynMintingHook is BaseHook {
         
         // Call existing OrynEngine function to deposit NFT and mint oUSD
         // Use depositUniPositionAndMintFrom to transfer from the user's address
-        uint256 positionId = orynEngine.depositUniPositionAndMintFrom(sender, tokenId, mintParams.mintAmount);
+        uint256 positionId = orynEngine.depositUniPositionAndMintFrom(sender, tokenId, 0);
 
         emit LiquidityAddedWithMint(sender, tokenId, mintParams.mintAmount, positionId);
     }
