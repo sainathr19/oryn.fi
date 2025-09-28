@@ -4,6 +4,10 @@ export interface Asset {
     symbol: string;
     logo: string;
     tokenAddress: string;
+    chainKey?: string;
+    chainName?: string;
+    chainLogo?: string;
+    chainId?: string;
 }
 
 export interface Chain {

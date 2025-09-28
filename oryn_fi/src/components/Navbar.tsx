@@ -21,25 +21,21 @@ const Navbar = () => {
             <li>
               <button
                 onClick={() => navigate("/borrow")}
-                className={`hover:text-purple-600 transition-colors ${
-                  location.pathname === "/borrow"
-                    ? "text-purple-600 font-semibold"
-                    : "text-gray-700"
-                }`}
+                className={`hover:text-purple-600 transition-colors ${location.pathname === "/borrow"
+                  ? "text-purple-600 font-semibold"
+                  : "text-gray-700"
+                  }`}
               >
                 Borrow
               </button>
             </li>
             <li>
               <button
-                onClick={() => navigate("/dashboard")}
-                className={`hover:text-purple-600 transition-colors ${
-                  location.pathname === "/dashboard"
-                    ? "text-purple-600 font-semibold"
-                    : "text-gray-700"
-                }`}
+                onClick={() => navigate("/add-liquidity")}
+                className={`hover:text-purple-600 transition-colors ${location.pathname === "/add-liquidity" ? "text-purple-600 font-semibold" : "text-gray-700"
+                  }`}
               >
-                Dashboard
+                Add Liquidity
               </button>
             </li>
           </ul>

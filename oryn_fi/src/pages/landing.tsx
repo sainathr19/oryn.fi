@@ -12,7 +12,6 @@ export const Landing = () => {
       <ValueProps />
       <AudienceHooks />
       <HiddenValue />
-      <div className="min-h-screen"></div>
     </div>
   );
 };
