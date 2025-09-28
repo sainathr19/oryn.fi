@@ -7,3 +7,18 @@
 [submodule "blockchain/lib/v4-template"]
 	path = blockchain/lib/v4-template
 	url = https://github.com/uniswapfoundation/v4-template
+[submodule "uniswap-v3/lib/forge-std"]
+	path = uniswap-v3/lib/forge-std
+	url = https://github.com/foundry-rs/forge-std
+[submodule "uniswap-v3/lib/v3-periphery"]
+	path = uniswap-v3/lib/v3-periphery
+	url = https://github.com/Uniswap/v3-periphery
+[submodule "uniswap-v3/lib/v3-core"]
+	path = uniswap-v3/lib/v3-core
+	url = https://github.com/Uniswap/v3-core
+[submodule "uniswap-v3/lib/base64"]
+	path = uniswap-v3/lib/base64
+	url = https://github.com/Brechtpd/base64
+[submodule "uniswap-v3/lib/uniswap-lib"]
+	path = uniswap-v3/lib/uniswap-lib
+	url = https://github.com/Uniswap/uniswap-lib
