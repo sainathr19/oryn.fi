@@ -45,12 +45,6 @@ export const Kiosk = ({
   onBorrowSuccess,
   isMinting,
   isRedeeming,
-  mintError,
-  redeemError,
-  mintSuccess,
-  redeemSuccess,
-  lastMintTxHash,
-  lastRedeemTxHash,
 }: KioskProps) => {
   const { address } = useAccount();
   const {
@@ -65,18 +59,16 @@ export const Kiosk = ({
     mintOrynUSD,
     burnOrynUSD,
     isRepaying,
-    repayError,
-    lastRepayTxHash,
   } = useContracts();
 
   // State for borrow amount and validation
-  const [borrowAmount, setBorrowAmount] = useState<number>(0);
+  const [borrowAmount, setBorrowAmount] = useState<bigint>(BigInt(0));
   const [isValidAmount, setIsValidAmount] = useState<boolean>(true);
   const [depositSuccess, setDepositSuccess] = useState<boolean>(false);
   const [isBorrowLoading, setIsBorrowLoading] = useState<boolean>(false);
 
   // State for repay amount and validation
-  const [repayAmount, setRepayAmount] = useState<number>(0);
+  const [repayAmount, setRepayAmount] = useState<bigint>(BigInt(0));
   const [isValidRepayAmount, setIsValidRepayAmount] = useState<boolean>(true);
   const [isRepayLoading, setIsRepayLoading] = useState<boolean>(false);
 
@@ -97,7 +89,8 @@ export const Kiosk = ({
   const maxLoanAmount = fiatValue * MAX_LTV;
 
   // Health factor = max loan amount / (current debt + borrow amount)
-  const totalDebt = currentDebt + borrowAmount;
+  const borrowAmountNumber = Number(borrowAmount) / Math.pow(10, 18);
+  const totalDebt = currentDebt + borrowAmountNumber;
   const healthFactor = totalDebt > 0 ? maxLoanAmount / totalDebt : Infinity;
 
   // Calculate liquidation threshold
@@ -127,7 +120,7 @@ export const Kiosk = ({
 
   // Handle mint function with proper decimal conversion
   const handleMint = async () => {
-    if (!selectedPosition || !borrowAmount || borrowAmount <= 0) {
+    if (!selectedPosition || !borrowAmount || borrowAmount === BigInt(0)) {
       console.log("Cannot mint: missing position or invalid amount", {
         selectedPosition,
         borrowAmount,
@@ -144,30 +137,20 @@ export const Kiosk = ({
     try {
       setIsBorrowLoading(true);
 
-      // Convert to proper decimals (OUSDC has 6 decimals)
-      const multiplier = Math.pow(10, 18);
-      const rawAmount = borrowAmount * multiplier;
-      const roundedAmount = Math.round(rawAmount);
-      const amountWithDecimals = BigInt(roundedAmount);
-
       console.log("Starting mint process:", {
         positionId: Number(selectedPosition.positionId),
-        borrowAmount: borrowAmount,
-        multiplier: multiplier,
-        rawAmount: rawAmount,
-        roundedAmount: roundedAmount,
-        amountWithDecimals: amountWithDecimals.toString(),
-        amountInOUSDC: Number(amountWithDecimals) / multiplier,
+        borrowAmount: borrowAmount.toString(),
+        borrowAmountNumber: Number(borrowAmount) / Math.pow(10, 18),
       });
 
-      // Call mintOrynUSD directly
+      // Call mintOrynUSD directly with the BigInt amount
       await mintOrynUSD(
         Number(selectedPosition.positionId),
-        amountWithDecimals
+        borrowAmount
       );
 
       // Reset borrow amount after successful mint
-      setBorrowAmount(0);
+      setBorrowAmount(BigInt(0));
       console.log("Borrow completed successfully");
 
       // Notify parent component about successful borrow
@@ -183,7 +166,7 @@ export const Kiosk = ({
 
   // Handle repay function with proper decimal conversion
   const handleRepay = async () => {
-    if (!selectedPosition || !repayAmount || repayAmount <= 0) {
+    if (!selectedPosition || !repayAmount || repayAmount === BigInt(0)) {
       console.log("Cannot repay: missing position or invalid amount", {
         selectedPosition,
         repayAmount,
@@ -200,30 +183,20 @@ export const Kiosk = ({
     try {
       setIsRepayLoading(true);
 
-      // Convert to proper decimals (OUSDC has 6 decimals)
-      const multiplier = Math.pow(10, 6);
-      const rawAmount = repayAmount * multiplier;
-      const roundedAmount = Math.round(rawAmount);
-      const amountWithDecimals = BigInt(roundedAmount);
-
       console.log("Starting repay process:", {
         positionId: Number(selectedPosition.positionId),
-        repayAmount: repayAmount,
-        multiplier: multiplier,
-        rawAmount: rawAmount,
-        roundedAmount: roundedAmount,
-        amountWithDecimals: amountWithDecimals.toString(),
-        amountInOUSDC: Number(amountWithDecimals) / multiplier,
+        repayAmount: repayAmount.toString(),
+        repayAmountNumber: Number(repayAmount) / Math.pow(10, 18),
       });
 
-      // Call burnOrynUSD directly
+      // Call burnOrynUSD directly with the BigInt amount
       await burnOrynUSD(
         Number(selectedPosition.positionId),
-        amountWithDecimals
+        repayAmount
       );
 
       // Reset repay amount after successful repay
-      setRepayAmount(0);
+      setRepayAmount(BigInt(0));
       console.log("Repay completed successfully");
     } catch (error) {
       console.error("Failed to repay:", error);
@@ -237,8 +210,8 @@ export const Kiosk = ({
     address &&
     selectedPosition &&
     isValidAmount &&
-    borrowAmount > 0 &&
-    borrowAmount <= maxBorrowPower &&
+    borrowAmount > BigInt(0) &&
+    borrowAmountNumber <= maxBorrowPower &&
     !isMinting &&
     !isBorrowLoading;
 
@@ -247,8 +220,8 @@ export const Kiosk = ({
     address &&
     selectedPosition &&
     isValidRepayAmount &&
-    repayAmount > 0 &&
-    repayAmount <= Number(selectedPosition.debtValueUSD) / Math.pow(10, 18) &&
+    repayAmount > BigInt(0) &&
+    Number(repayAmount) / Math.pow(10, 18) <= Number(selectedPosition.debtValueUSD) / Math.pow(10, 18) &&
     !isRepaying &&
     !isRepayLoading;
 
@@ -504,7 +477,7 @@ export const Kiosk = ({
                       healthFactor
                     )}`}
                   >
-                    {borrowAmount === 0
+                    {borrowAmount === BigInt(0)
                       ? "--"
                       : healthFactor === Infinity
                       ? "∞"
@@ -596,7 +569,7 @@ export const Kiosk = ({
                             left: `${positionPercent}%`,
                           }}
                         >
-                          {borrowAmount === 0 ? "-" : healthFactor.toFixed(2)}
+                          {borrowAmount === BigInt(0) ? "-" : healthFactor.toFixed(2)}
                         </div>
                       );
                     })()}
@@ -663,16 +636,21 @@ export const Kiosk = ({
                   step="0.01"
                   min="0"
                   max={Number(selectedPosition.debtValueUSD) / Math.pow(10, 18)}
-                  value={repayAmount || ""}
+                  value={repayAmount === BigInt(0) ? "" : (Number(repayAmount) / Math.pow(10, 18)).toString()}
                   onChange={(e) => {
-                    const value = parseFloat(e.target.value) || 0;
-                    setRepayAmount(value);
-                    setIsValidRepayAmount(
-                      value > 0 &&
-                        value <=
-                          Number(selectedPosition.debtValueUSD) /
-                            Math.pow(10, 18)
-                    );
+                    const value = e.target.value;
+                    if (value === "") {
+                      setRepayAmount(BigInt(0));
+                      setIsValidRepayAmount(true);
+                    } else {
+                      const amount = BigInt(parseFloat(value) * Math.pow(10, 18));
+                      setRepayAmount(amount);
+                      const amountNumber = Number(amount) / Math.pow(10, 18);
+                      setIsValidRepayAmount(
+                        amountNumber > 0 &&
+                          amountNumber <= Number(selectedPosition.debtValueUSD) / Math.pow(10, 18)
+                      );
+                    }
                   }}
                   placeholder="0.00"
                   className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
