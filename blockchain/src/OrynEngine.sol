@@ -183,6 +183,16 @@ contract OrynEngine is ReentrancyGuard, IERC721Receiver {
         }
     }
 
+    function depositUniPositionAndMintFrom(address from, uint256 tokenId, uint256 amountOrynUSDtoMint)
+        external
+        returns (uint256 positionId)
+    {
+        positionId = depositUniPositionFrom(from, tokenId);
+        if (amountOrynUSDtoMint > 0) {
+            mintOrynUSD(positionId, amountOrynUSDtoMint);
+        }
+    }
+
     function depositCollateral(address tokenCollateralAddress, uint256 amountCollateral)
         public
         moreThanZero(amountCollateral)
@@ -242,6 +252,40 @@ contract OrynEngine is ReentrancyGuard, IERC721Receiver {
         
         emit UniPositionDeposited(msg.sender, positionId, tokenId, positionInfo.token0, positionInfo.token1, usdValue);
         emit PositionOpened(positionId, msg.sender, uint8(CollateralType.UNI_V3), tokenId);
+    }
+
+    function depositUniPositionFrom(address from, uint256 tokenId) public returns (uint256 positionId) {
+        if (tokenId == 0) {
+            revert OrynEngine__InValidIndex();
+        }
+        if (s_tokenToPositionId[tokenId] != 0) {
+            revert OrynEngine__PositionAlreadyDeposited(tokenId);
+        }
+        address owner = i_positionManager.ownerOf(tokenId);
+        if (owner != from) {
+            revert OrynEngine__PositionNotOwner();
+        }
+
+        UniPositionInfo memory positionInfo = _getUniPositionInfo(tokenId);
+        _validatePositionTokens(positionInfo.token0, positionInfo.token1);
+
+        i_positionManager.safeTransferFrom(from, address(this), tokenId);
+
+        positionId = s_nextPositionId++;
+        Position storage position = s_positions[positionId];
+        position.owner = from;
+        position.collateralType = CollateralType.UNI_V3;
+        position.uniTokenId = tokenId;
+
+        s_positionIndex[positionId] = s_userPositions[from].length;
+        s_userPositions[from].push(positionId);
+        s_tokenToPositionId[tokenId] = positionId;
+
+        // Calculate USD value safely - if it fails, use 0 and emit event
+        uint256 usdValue = this.getUniPositionValueUSD(tokenId);
+        
+        emit UniPositionDeposited(from, positionId, tokenId, positionInfo.token0, positionInfo.token1, usdValue);
+        emit PositionOpened(positionId, from, uint8(CollateralType.UNI_V3), tokenId);
     }
 
     function mintOrynUSD(uint256 positionId, uint256 amountOrynUSDtoMint)

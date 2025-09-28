@@ -1,4 +1,10 @@
 {
+  "lib/v3-core": {
+    "tag": {
+      "name": "v1.0.0",
+      "rev": "e3589b192d0be27e100cd0daaf6c97204fdb1899"
+    }
+  },
   "lib/forge-std": {
     "tag": {
       "name": "v1.10.0",
@@ -9,12 +15,6 @@
     "tag": {
       "name": "v5.4.0",
       "rev": "c64a1edb67b6e3f4a15cca8909c9482ad33a02b0"
-    }
-  },
-  "lib/v3-core": {
-    "tag": {
-      "name": "v1.0.0",
-      "rev": "e3589b192d0be27e100cd0daaf6c97204fdb1899"
     }
   },
   "lib/v3-periphery": {

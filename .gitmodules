@@ -4,3 +4,6 @@
 [submodule "blockchain/lib/v3-periphery"]
 	path = blockchain/lib/v3-periphery
 	url = https://github.com/Uniswap/v3-periphery
+[submodule "blockchain/lib/v4-template"]
+	path = blockchain/lib/v4-template
+	url = https://github.com/uniswapfoundation/v4-template
