@@ -7,14 +7,19 @@ type SelectTokenType = {
     logo: string;
     network: {
       networkName: string;
+      chainId: number;
       networkLogo: string;
     };
   };
+  onClick?: () => void;
 };
 
-export const SelectToken: FC<SelectTokenType> = ({ asset }) => {
+export const SelectToken: FC<SelectTokenType> = ({ asset, onClick }) => {
   return (
-    <div className="p-4 bg-white/50 rounded-2xl flex items-center gap-2 w-full justify-between hover:bg-white hover:scale-[101%] transition-all duration-200 ease-in-out cursor-pointer">
+    <div
+      className="p-4 bg-white/50 rounded-2xl flex items-center gap-2 w-full justify-between hover:bg-white hover:scale-[101%] transition-all duration-200 ease-in-out cursor-pointer"
+      onClick={onClick}
+    >
       <div className="flex items-center gap-2">
         <TokenNetworkLogos
           tokenLogo={asset.logo || ""}

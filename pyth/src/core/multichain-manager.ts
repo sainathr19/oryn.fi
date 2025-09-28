@@ -1,7 +1,7 @@
 import { ethers } from 'ethers';
 import { OracleManager } from './oracle-manager';
 import { ChainConfig } from '../types';
-import { oracleAbi } from '../../abi/oracle';
+import { oracleAbi } from '../abi/oracle';
 
 /**
  * Chain-specific Oracle Manager wrapper with logging
@@ -15,8 +15,8 @@ class ChainOracleManager {
     this.chainConfig = chainConfig;
     this.logger = new ChainLogger(chainConfig.chainName, chainConfig.chainId);
     
-    // Create provider and wallet for this chain
-    const provider = new ethers.JsonRpcProvider(chainConfig.rpcUrl);
+    // Create provider and wallet for this chain with retry logic
+    const provider = this.createProviderWithRetry(chainConfig.rpcUrl);
     const wallet = new ethers.Wallet(chainConfig.privateKey, provider);
     
     // Validate oracle address
@@ -30,6 +30,34 @@ class ChainOracleManager {
     this.logger.info(`Initialized OracleManager for ${chainConfig.chainName} (Chain ID: ${chainConfig.chainId})`);
     this.logger.info(`Oracle Address: ${chainConfig.oracleAddress}`);
     this.logger.info(`Wallet Address: ${wallet.address}`);
+  }
+
+  /**
+   * Create a provider with retry logic and connection validation
+   */
+  private createProviderWithRetry(rpcUrl: string): ethers.JsonRpcProvider {
+    this.logger.info(`Connecting to RPC endpoint: ${rpcUrl}`);
+    
+    const provider = new ethers.JsonRpcProvider(rpcUrl, undefined, {
+      polling: true,
+      pollingInterval: 1000,
+      staticNetwork: true
+    });
+
+    // Add connection event listeners
+    provider.on('error', (error) => {
+      this.logger.error('RPC Provider error:', error);
+    });
+
+    provider.on('network', (newNetwork, oldNetwork) => {
+      if (oldNetwork) {
+        this.logger.info(`Network changed from ${oldNetwork.name} to ${newNetwork.name}`);
+      } else {
+        this.logger.info(`Connected to network: ${newNetwork.name} (Chain ID: ${newNetwork.chainId})`);
+      }
+    });
+
+    return provider;
   }
 
   /**

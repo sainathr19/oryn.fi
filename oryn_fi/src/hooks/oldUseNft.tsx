@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAccount, useWalletClient } from 'wagmi';
 import { erc721Abi } from 'viem';
 import { readContract } from 'viem/actions';
+import { contractAddresses } from '../constants/constants';
 
 // Types for NFT data
 export interface NFT {
@@ -24,12 +25,6 @@ export interface UseNFTReturn {
   fetchNfts: () => void;
   refetch: () => void;
 }
-
-// Common NFT contract addresses
-const NFT_CONTRACTS = [
-  "0x429ba70129df741B2Ca2a85BC3A2a3328e5c09b4",
-  // Add more NFT contract addresses as needed
-];
 
 export const useNFT = (): UseNFTReturn => {
   const { address, isConnected } = useAccount();
@@ -121,7 +116,7 @@ const fetchNFTData = useCallback(async (contractAddress: string): Promise<NFTCon
       setIsLoading(true);
       const contracts: NFTContract[] = [];
 
-      for (const contractAddress of NFT_CONTRACTS) {
+      for (const contractAddress of contractAddresses.ORYN_ENGINE_ADDRESS_V3) {
         const contract = await fetchNFTData(contractAddress);
         contracts.push(contract);
       }

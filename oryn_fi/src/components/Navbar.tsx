@@ -2,15 +2,10 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Icon } from "../assets/Icon";
 import { Typo } from "../assets/Typo";
 import { WalletConnectButton } from "./UI/WalletConnect";
-import { Button } from "./UI/Button";
 
 const Navbar = () => {
   const navigate = useNavigate();
   const location = useLocation();
-
-  const handleLaunchApp = () => {
-    navigate("/borrow");
-  };
 
   return (
     <nav className="z-50 fixed top-0 w-full px-6 bg-white/5 backdrop-blur-lg">
@@ -24,17 +19,31 @@ const Navbar = () => {
         <div className="flex items-center justify-end gap-12">
           <ul className="flex items-center justify-center gap-12 text-md">
             <li>
-              <a href="/borrow">Borrow</a>
+              <button
+                onClick={() => navigate("/borrow")}
+                className={`hover:text-purple-600 transition-colors ${
+                  location.pathname === "/borrow"
+                    ? "text-purple-600 font-semibold"
+                    : "text-gray-700"
+                }`}
+              >
+                Borrow
+              </button>
             </li>
             <li>
-              <a href="/borrow">Dashboard</a>
+              <button
+                onClick={() => navigate("/dashboard")}
+                className={`hover:text-purple-600 transition-colors ${
+                  location.pathname === "/"
+                    ? "text-purple-600 font-semibold"
+                    : "text-gray-700"
+                }`}
+              >
+                Dashboard
+              </button>
             </li>
           </ul>
-          {location.pathname === "/borrow" ? (
-            <WalletConnectButton />
-          ) : (
-            <Button onClick={handleLaunchApp}>Launch App</Button>
-          )}{" "}
+          <WalletConnectButton />
         </div>
       </div>
     </nav>

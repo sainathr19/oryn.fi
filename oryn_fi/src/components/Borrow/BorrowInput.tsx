@@ -3,34 +3,32 @@ import { IOType } from "../../constants/constants";
 import clsx from "clsx";
 import NumberFlow from "@number-flow/react";
 import { TokenInfo } from "../UI/TokenInfo";
-import { ChevronDown } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "../UI/dialog";
-import { SelectToken } from "../UI/SelectToken";
+import { validateBorrowAmount } from "../../utils/borrowCalculations";
 
 type BorrowInputType = {
   type: IOType;
+  maxValue?: number;
+  onAmountChange?: (amount: bigint) => void;
+  onValidationChange?: (isValid: boolean, error?: string) => void;
 };
 
-export const BorrowInput: FC<BorrowInputType> = ({ type }) => {
-  const label = type === IOType.collateral ? "Collateral" : "Loan";
+export const BorrowInput: FC<BorrowInputType> = ({ 
+  type, 
+  maxValue, 
+  onAmountChange, 
+  onValidationChange 
+}) => {
+  const label = type === IOType.collateral ? "Collateral" : "Loan Amount";
 
-  const asset = {
-    symbol: "OUSDC",
+  // Static OrynUSD asset data
+  const orynUSDAsset = {
+    symbol: "OrynUSD",
     logo: "https://garden.imgix.net/ethglobal/OrynUSDC.svg",
-    network: {
-      networkName: "Oryn",
-      networkLogo: "https://garden.imgix.net/ethglobal/OrynChain.svg",
-    },
+    decimals: 18
   };
 
   const [amount, setAmount] = useState("");
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const [isFocused, setIsFocused] = useState(false);
   const [animated, setAnimated] = useState(true);
@@ -66,7 +64,28 @@ export const BorrowInput: FC<BorrowInputType> = ({ type }) => {
       }, 800);
       return;
     }
+
+    // Limit decimal places to 18 (OrynUSD decimals)
+    if (parts.length === 2 && parts[1].length > 18) {
+      input = parts[0] + "." + parts[1].substring(0, 18);
+    }
+
     setAmount(input);
+
+    // Validate the amount and notify parent component
+    const numericAmount = parseFloat(input) || 0;
+    if (maxValue && numericAmount > 0) {
+      const validation = validateBorrowAmount(numericAmount, maxValue);
+      setValidationError(validation.error || null);
+      onValidationChange?.(validation.isValid, validation.error);
+    } else {
+      setValidationError(null);
+      onValidationChange?.(true);
+    }
+    
+    // Convert to 18 decimals for blockchain operations
+    const amountWithDecimals = BigInt(numericAmount * Math.pow(10, 18));
+    onAmountChange?.(amountWithDecimals);
   };
 
   useEffect(() => {
@@ -94,18 +113,20 @@ export const BorrowInput: FC<BorrowInputType> = ({ type }) => {
         <div className="flex justify-between">
           <div className="flex gap-3">
             <h4 className="text-sm font-medium">{label}</h4>
-            <div className="flex gap-2">
-              {/* {amount && Number(price) !== 0 && ( */}
+            {maxValue && (
               <h5 className="text-sm">
                 <span className="text-mid-grey">
-                  {/* ~${formatAmountUsd(price, 0)} */}
-                  $2000
+                  Max: ${maxValue.toFixed(2)}
                 </span>
               </h5>
-              {/* )} */}
-            </div>
+            )}
           </div>
         </div>
+        {validationError && (
+          <div className="text-red-500 text-xs mt-1">
+            {validationError}
+          </div>
+        )}
         <div className="flex h-5 justify-between sm:h-7">
           <span className="text-2xl font-medium">
             <div className="relative w-[150px] max-w-[150px] md:w-[200px] md:max-w-[200px]">
@@ -156,50 +177,23 @@ export const BorrowInput: FC<BorrowInputType> = ({ type }) => {
                     onAnimationsFinish={() => {
                       setIsAnimating(false);
                     }}
-                    className={`w-full text-start font-[inherit] tracking-normal duration-200 ease-in-out ${
-                      showLoadingOpacity ? "opacity-75" : ""
-                    }`}
+                    className={`w-full text-start font-[inherit] tracking-normal duration-200 ease-in-out ${showLoadingOpacity ? "opacity-75" : ""
+                      }`}
                     willChange
                   />
                 )}
               </div>
             </div>
           </span>
-          <Dialog>
-            <DialogTrigger>
-              {asset ? (
-                <TokenInfo
-                  symbol={asset.symbol}
-                  tokenLogo={asset.logo || ""}
-                  chainLogo={asset.network?.networkLogo}
-                  onClick={() => {}}
-                />
-              ) : (
-                <div
-                  className="flex cursor-pointer items-center gap-1"
-                  onClick={() => {}}
-                >
-                  <span>Select token</span>
-                  <ChevronDown className="w-5" />
-                </div>
-              )}
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Select a token?</DialogTitle>
-                <DialogDescription>
-                  <div className="items-center justify-center gap-3 pt-4 grid grid-cols-2">
-                    <SelectToken asset={asset} />
-                    <SelectToken asset={asset} />
-                    <SelectToken asset={asset} />
-                    <SelectToken asset={asset} />
-                  </div>
-                </DialogDescription>
-              </DialogHeader>
-            </DialogContent>
-          </Dialog>
+          {/* Static OrynUSD display - no modal needed */}
+          <TokenInfo
+            symbol={orynUSDAsset.symbol}
+            tokenLogo={orynUSDAsset.logo}
+            onClick={() => { }}
+          />
         </div>
       </div>
     </>
   );
 };
+
