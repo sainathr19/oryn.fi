@@ -926,12 +926,12 @@ contract OrynEngine is ReentrancyGuard, IERC721Receiver {
     }
 
     function _normalizePrice(PythStructs.Price memory price) internal pure returns (uint256) {
-        int64 rawPrice = price.price;
-        if (rawPrice <= 0) {
-            revert OrynEngine__InvalidPrice();
-        }
+        // int64 rawPrice = price.price;
+        // if (rawPrice <= 0) {
+        //     revert OrynEngine__InvalidPrice();
+        // }
 
-        return 1000;
+        // // return 1000;
 
         // uint256 basePrice = uint256(uint64(rawPrice));
         // int256 exponent = int256(price.expo) + 18;
@@ -941,6 +941,29 @@ contract OrynEngine is ReentrancyGuard, IERC721Receiver {
         // } else {
         //     return basePrice / _pow10(uint256(-exponent));
         // }
+         int64 rawPrice = price.price;
+    if (rawPrice <= 0) {
+        revert OrynEngine__InvalidPrice();
+    }
+
+    uint256 basePrice = uint256(uint64(rawPrice));
+    int32 expo = price.expo;
+    
+    // Calculate the final exponent needed to get 18 decimal places
+    // Pyth gives us: actualPrice = rawPrice * 10^expo
+    // We want: actualPrice * 10^18 = rawPrice * 10^(expo + 18)
+    int256 finalExponent = int256(expo) + 18;
+    
+    if (finalExponent >= 0) {
+        // Positive exponent: multiply
+        if (finalExponent > 77) revert OrynEngine__InvalidPrice(); // Prevent overflow
+        return basePrice * (10 ** uint256(finalExponent));
+    } else {
+        // Negative exponent: divide
+        uint256 divisorExponent = uint256(-finalExponent);
+        if (divisorExponent > 77) revert OrynEngine__InvalidPrice(); // Prevent underflow
+        return basePrice / (10 ** divisorExponent);
+    }
     }
 
     function _pow10(uint256 exponent) internal pure returns (uint256) {
@@ -1073,5 +1096,82 @@ contract OrynEngine is ReentrancyGuard, IERC721Receiver {
         }
         
         return uint256(liquidity) * (sqrtRatioBX96 - sqrtRatioAX96) >> 96;
+    }
+
+    /**
+     * @notice Get NFT position details including token addresses and USD value
+     * @param tokenId The NFT token ID
+     * @return token0 The first token address in the pair
+     * @return token1 The second token address in the pair
+     * @return fee The fee tier of the pool
+     * @return liquidity The liquidity amount in the position
+     * @return totalValueUSD The total USD value of the position (principal + fees)
+     * @return principalValueUSD The USD value of just the principal liquidity
+     * @return feeValueUSD The USD value of accrued fees
+     */
+    function getNFTPositionDetails(uint256 tokenId) 
+        external 
+        view 
+        returns (
+            address token0,
+            address token1,
+            uint24 fee,
+            uint128 liquidity,
+            uint256 totalValueUSD,
+            uint256 principalValueUSD,
+            uint256 feeValueUSD
+        ) 
+    {
+        // Get position info from Uniswap Position Manager
+        UniPositionInfo memory positionInfo = _getUniPositionInfo(tokenId);
+        
+        token0 = positionInfo.token0;
+        token1 = positionInfo.token1;
+        fee = positionInfo.fee;
+        liquidity = positionInfo.liquidity;
+        
+        // Get token breakdown (principal + fees)
+        (
+            uint256 amount0Principal,
+            uint256 amount1Principal,
+            uint256 amount0Fees,
+            uint256 amount1Fees
+        ) = _getUniPositionTokenBreakdown(tokenId);
+        
+        // Calculate USD values
+        principalValueUSD = 
+            _getUSDValue(token0, amount0Principal) + 
+            _getUSDValue(token1, amount1Principal);
+        
+        feeValueUSD = 
+            _getUSDValue(token0, amount0Fees) + 
+            _getUSDValue(token1, amount1Fees);
+        
+        totalValueUSD = principalValueUSD + feeValueUSD;
+    }
+
+    function debugPriceCalculation(address token) 
+        external 
+        view 
+        returns (
+            int64 rawPrice,
+            int32 expo,
+            uint256 normalizedPrice,
+            uint256 actualPrice
+        ) 
+    {
+        PythStructs.Price memory priceData = _fetchLatestPythPrice(token);
+        rawPrice = priceData.price;
+        expo = priceData.expo;
+        normalizedPrice = _normalizePrice(priceData);
+        
+        // Calculate the actual price for debugging
+        if (expo >= 0) {
+            uint256 positiveExpo = uint256(uint32(expo));
+            actualPrice = uint256(uint64(rawPrice)) * _pow10(positiveExpo);
+        } else {
+            uint256 negativeExpo = uint256(uint32(-expo));
+            actualPrice = uint256(uint64(rawPrice)) / _pow10(negativeExpo);
+        }
     }
 }

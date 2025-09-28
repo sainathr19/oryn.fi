@@ -39,13 +39,26 @@ contract DeployOOrynEngine is Script {
 
 
         address[] memory tokens = new address[](4);
-        tokens[0] = 0x9CBEf80A86c1F9209F774a8807043F6Efec19042; // WETH
-        tokens[1] = 0xeBf11B64DC588FcC2573c9a6Efda449888ef2B27; // WBTC
-        tokens[2] = 0x38A72C43Abd3fCDC56764E0D0226d9d6D17c3192; // USDC
-        tokens[3] = 0x0491bDD4BA0D32AC596744F79ce425A36aaF4db6; // UNI
+        // tokens[0] = 0x9CBEf80A86c1F9209F774a8807043F6Efec19042; // WETH
+        // tokens[1] = 0xeBf11B64DC588FcC2573c9a6Efda449888ef2B27; // WBTC
+        // tokens[2] = 0x38A72C43Abd3fCDC56764E0D0226d9d6D17c3192; // USDC
+        // tokens[3] = 0x0491bDD4BA0D32AC596744F79ce425A36aaF4db6; // UNI
 
-        address oracle = 0xDd24F84d36BF92C65F92307595335bdFab5Bbd21; // MockPyth (ETH sepolia)
-        // address oracle = 0xfb0EeE649130222d949265CafC442aC64233bd06; // MockPyth (ETH sepolia)
+
+        // HEDERA TESTNET
+        // tokens[0] = 0x781B875561372D681c80d0Ea58C8346Ae333d9a6; // WETH
+        // tokens[1] = 0xe7128921127A7D6754d427C0065b778C82a6AcF5; // WBTC
+        // tokens[2] = 0xEbACCC2d849b1932b5b61E282Ea8C218Bc1b7fA2; // USDC
+        // tokens[3] = 0xc4d65e26BB608e48d7965282F293a350E7BAF2eb; // UNI
+
+        // Kadena testnet 
+        tokens[0] = 0x5E3e9397Ac1Bd1b112aF2880fFEF74aC248b1F12; // WETH
+        tokens[1] = 0xe139824Ef23d4A82423f22F2De5793dBC0f97EE7; // WBTC
+        tokens[2] = 0x9B42D48740425ac81f7384FE025F0CB6eaAc5De0; // USDC
+        tokens[3] = 0xF5eA37468A15b8585D492604550E135969716546; // UNI
+
+        // address oracle = 0xDd24F84d36BF92C65F92307595335bdFab5Bbd21; // MockPyth (ETH sepolia)
+        address oracle = 0x89859caa52E07B5cc0F63Ba7D798053691a4C7fE; // MockPyth (Hedera sepolia)
 
         address positionManager = 0x1238536071E1c677A632429e3655c799b22cDA52; // NFTPositionmanager
 
