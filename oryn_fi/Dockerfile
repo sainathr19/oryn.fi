@@ -23,7 +23,7 @@ ENV CXX=g++
 RUN corepack enable && corepack prepare yarn@4.5.1 --activate
 
 # Copy package files for dependency caching
-COPY package.json yarn.lock .yarnrc.yml ./
+COPY package.json yarn.lock ./
 
 # Configure yarn for optimal performance
 RUN yarn config set nodeLinker node-modules && \
@@ -56,7 +56,7 @@ COPY . .
 # Build the application
 RUN --mount=type=cache,target=/app/node_modules/.vite \
     --mount=type=cache,target=/app/node_modules/.cache \
-    vite build --mode production --minify esbuild
+    yarn build
 
 # ============================================================================
 FROM nginx:1.27-alpine AS production
